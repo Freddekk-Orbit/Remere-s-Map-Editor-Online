@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Remere's Map Editor (Wasm)</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: #101214;
+      color: #d7ddd8;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      overflow: hidden;
+    }
+    .emscripten {
+      position: absolute;
+      inset: 0;
+      margin: 0;
+      border: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      image-rendering: pixelated;
+    }
+    #canvas:focus { outline: none; }
+    #rme-file-input { display: none; }
+    #drop-overlay {
+      display: none;
+      position: absolute;
+      inset: 16px;
+      border: 2px dashed #3d8f5a;
+      border-radius: 12px;
+      background: rgba(16, 32, 22, 0.72);
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      pointer-events: none;
+      z-index: 10;
+    }
+    #drop-overlay.visible { display: flex; }
+    #status {
+      position: absolute;
+      left: 12px;
+      bottom: 10px;
+      font-size: 12px;
+      opacity: 0.75;
+      z-index: 5;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+  <input id="rme-file-input" type="file" multiple accept=".otbm,.otgz,.dat,.spr,.xml,.otfi,.png,.json">
+  <div id="drop-overlay">Drop .otbm / .dat / .spr / XML into the editor</div>
+  <div id="status">Loading Remere's Map Editor…</div>
+
+  <script>
+    function rmeEnsureDir(path) {
+      try { FS.mkdir(path); } catch (e) {}
+    }
+
+    function rmeImportBrowserFile(file) {
+      return file.arrayBuffer().then(function(buffer) {
+        const data = new Uint8Array(buffer);
+        const name = file.name.replace(/\\/g, '/').split('/').pop();
+        const dest = '/uploads/' + name;
+        rmeEnsureDir('/uploads');
+        FS.writeFile(dest, data);
+        if (Module.ccall) {
+          Module.ccall('rme_on_file_uploaded', null, ['string', 'number'], [dest, data.length]);
+        }
+        console.log('Imported', dest, data.length);
+      });
+    }
+
+    function rmeImportFileList(fileList) {
+      const files = Array.from(fileList || []);
+      return Promise.all(files.map(rmeImportBrowserFile));
+    }
+
+    var statusEl = document.getElementById('status');
+    var overlay = document.getElementById('drop-overlay');
+    var fileInput = document.getElementById('rme-file-input');
+
+    fileInput.addEventListener('change', function() {
+      rmeImportFileList(fileInput.files).finally(function() { fileInput.value = ''; });
+    });
+
+    ['dragenter', 'dragover'].forEach(function(type) {
+      window.addEventListener(type, function(event) {
+        event.preventDefault();
+        overlay.classList.add('visible');
+      });
+    });
+    ['dragleave', 'drop'].forEach(function(type) {
+      window.addEventListener(type, function(event) {
+        event.preventDefault();
+        overlay.classList.remove('visible');
+      });
+    });
+    window.addEventListener('drop', function(event) {
+      if (event.dataTransfer && event.dataTransfer.files) {
+        rmeImportFileList(event.dataTransfer.files);
+      }
+    });
+
+    var Module = {
+      preRun: [],
+      postRun: [function() {
+        if (statusEl) statusEl.textContent = 'Ready — drop client files or use File → Upload';
+      }],
+      print: function() {
+        console.log.apply(console, arguments);
+      },
+      printErr: function() {
+        console.error.apply(console, arguments);
+      },
+      canvas: (function() {
+        return document.getElementById('canvas');
+      })(),
+      setStatus: function(text) {
+        if (statusEl && text) statusEl.textContent = text;
+      },
+      monitorRunDependencies: function() {}
+    };
+
+    window.onerror = function(event) {
+      console.error(event);
+      if (statusEl) statusEl.textContent = 'Runtime error — see the browser console';
+    };
+  </script>
+  {{{ SCRIPT }}}
+</body>
+</html>

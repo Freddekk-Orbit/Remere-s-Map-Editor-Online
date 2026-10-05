@@ -1,0 +1,2 @@
+# Optional --preload-file directory for packaged client data.
+# Place Tibia.dat / Tibia.spr / XML here in later phases.

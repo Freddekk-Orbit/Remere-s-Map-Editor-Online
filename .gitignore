@@ -1,0 +1,49 @@
+# Build trees
+build/
+build-*/
+cmake-build-*/
+out/
+
+# CMake / compilers
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+compile_commands.json
+.ninja_deps
+.ninja_log
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+
+# Emscripten / emsdk local installs
+emsdk/
+.emscripten
+.emscripten_cache/
+.emscripten_sanity
+
+# Generated web artifacts (keep sources in /web)
+*.wasm
+*.wasm.map
+*.js.mem
+
+# IDE / OS
+.idea/
+.vscode/
+.cache/
+.DS_Store
+*.swp
+*~
+
+# Game data that users upload locally
+*.otbm
+*.otgz
+*.dat
+*.spr
+*.pic
+
+# FetchContent / local imgui checkout (optional)
+_deps/
+third_party/imgui/
