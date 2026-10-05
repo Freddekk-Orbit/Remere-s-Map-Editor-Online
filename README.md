@@ -4,17 +4,14 @@ WebAssembly port of [Remere's Map Editor](https://github.com/opentibiabr/remeres
 
 This repository starts at **Phase 1: Build Pipeline & UI Decoupling**. The original desktop editor is a wxWidgets + OpenGL application. The browser target removes that windowing stack and boots an ImGui render loop instead.
 
-## Phase 1 status
+## Phase 2 status
 
-- Emscripten CMake configuration (`emcmake cmake`)
-- Dear ImGui with SDL2 + OpenGL ES 3.0 / WebGL2 backends
-- `src/main_wasm.cpp` entry point using `emscripten_set_main_loop()` (not `wxApp::OnRun()`)
-- Virtual filesystem: MEMFS (`/uploads`, `/assets`) and IDBFS (`/persist`)
-- Browser file picker + drag-and-drop for `.otbm`, `.dat`, `.spr`, and XML
-- Optional HTTP FETCH into `/assets`
-- wxWidgets include stubs under `src/wx_stub` so later core imports do not pull the desktop toolkit
+- C++ map core in `src/rme/core`: OTBM load/save (upstream FileHandle node stream), tiles, towns/waypoints, undo/redo
+- `.dat` / `.spr` header inspection (item and sprite counts)
+- ImGui map canvas: paint/erase ground items by ID, floor slider, Ctrl+Z / Ctrl+Y
+- Host test: `rme_core_test` (native CMake, no Emscripten) round-trips an OTBM
 
-Map algorithms, item definitions, floor drawing, and undo/redo are not imported yet. They stay in C++ and will land against this interface layer.
+Phase 1 (build pipeline, VFS, wx stubs, ImGui loop) remains the browser shell. Full sprite/WebGL floor rendering is still ahead.
 
 ## Repository layout
 
@@ -22,11 +19,19 @@ Map algorithms, item definitions, floor drawing, and undo/redo are not imported 
 CMakeLists.txt            Dual-target build (emcmake → Wasm, cmake → native ImGui preview)
 cmake/FetchImGui.cmake    Pins Dear ImGui (or uses third_party/imgui)
 src/main_wasm.cpp         Browser / preview entry + ImGui loop
+src/rme/core/             OTBM / tile map / undo-redo (no ImGui)
 src/platform/platform.h   RME_PLATFORM_WASM / RME_USE_WXWIDGETS switches
 src/wasm/                 MEMFS / IDBFS / FETCH bridge
 src/wx_stub/              Drop-in replacements for #include <wx/...>
 web/shell.html            HTML5 canvas, file input, drag-and-drop
 scripts/build_wasm.sh     Configure + build helper
+```
+
+Native core test (no Emscripten, no SDL):
+
+```bash
+g++ -std=c++20 -I src -I src/rme/core src/rme/core/*.cpp -o rme_core_test
+./rme_core_test
 ```
 
 ## Building the browser target

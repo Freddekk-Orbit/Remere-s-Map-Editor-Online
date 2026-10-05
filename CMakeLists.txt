@@ -18,14 +18,25 @@ endif()
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(FetchImGui)
 
+set(RME_CORE_SOURCES
+  src/rme/core/filehandle.cpp
+  src/rme/core/map.cpp
+  src/rme/core/otbm.cpp
+  src/rme/core/action.cpp
+  src/rme/core/items_dat.cpp
+  src/rme/core/session.cpp
+)
+
 add_executable(rme_wasm
   src/main_wasm.cpp
   src/wasm/asset_bridge.cpp
   src/wasm/wx_compat_sanity.cpp
+  ${RME_CORE_SOURCES}
 )
 
 target_include_directories(rme_wasm PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/src
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/rme/core
   ${CMAKE_CURRENT_SOURCE_DIR}/src/wx_stub
 )
 
@@ -83,6 +94,15 @@ else()
   find_package(SDL2 REQUIRED)
   find_package(OpenGL REQUIRED)
   target_link_libraries(rme_wasm PRIVATE SDL2::SDL2 OpenGL::GL)
+
+  add_executable(rme_core_test
+    src/rme/core/core_test.cpp
+    ${RME_CORE_SOURCES}
+  )
+  target_include_directories(rme_core_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/rme/core
+  )
 endif()
 
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES
