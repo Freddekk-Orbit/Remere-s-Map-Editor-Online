@@ -35,5 +35,3 @@ target_include_directories(rme_imgui PUBLIC
 if(EMSCRIPTEN)
   target_compile_definitions(rme_imgui PUBLIC IMGUI_IMPL_OPENGL_ES3)
 endif()
-
-set(IMGUI_DIR "${IMGUI_DIR}" PARENT_SCOPE)

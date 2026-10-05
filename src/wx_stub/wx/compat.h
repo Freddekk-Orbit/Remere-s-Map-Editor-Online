@@ -859,7 +859,7 @@ public:
 	bool Open() { return false; }
 	void Close() { }
 	bool SetData(void*) { return false; }
-	bool GetData(void&) { return false; }
+	bool GetData(wxObject&) { return false; }
 };
 class wxTextDataObject {
 public:
