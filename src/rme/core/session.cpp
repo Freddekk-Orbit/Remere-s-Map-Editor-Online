@@ -44,7 +44,7 @@ bool EditorSession::saveOtbm(const std::string& path) {
 }
 
 bool EditorSession::loadDat(const std::string& path) {
-	if (!LoadDatHeader(path, assets_)) {
+	if (!items_.load(path, assets_)) {
 		last_error_ = assets_.error.empty() ? "Failed to read .dat" : assets_.error;
 		return false;
 	}
@@ -53,10 +53,20 @@ bool EditorSession::loadDat(const std::string& path) {
 }
 
 bool EditorSession::loadSpr(const std::string& path) {
-	if (!LoadSprHeader(path, assets_)) {
-		last_error_ = assets_.error.empty() ? "Failed to read .spr" : assets_.error;
+	std::string error;
+	uint32_t signature = 0;
+	uint32_t count = 0;
+	if (!sprites_.load(path, signature, count, error)) {
+		assets_.spr_loaded = false;
+		assets_.error = error;
+		last_error_ = error.empty() ? "Failed to read .spr" : error;
 		return false;
 	}
+	assets_.spr_loaded = true;
+	assets_.spr_signature = signature;
+	assets_.sprite_count = count;
+	assets_.spr_path = path;
+	assets_.error.clear();
 	last_error_.clear();
 	return true;
 }
@@ -67,6 +77,22 @@ bool EditorSession::createSampleMap(const std::string& path) {
 		return false;
 	}
 	return loadOtbm(path);
+}
+
+bool EditorSession::createSampleAssets(const std::string& dat_path, const std::string& spr_path) {
+	if (!items_.writeSample(dat_path)) {
+		last_error_ = "Could not write sample Tibia.dat";
+		return false;
+	}
+	if (!sprites_.writeSample(spr_path)) {
+		last_error_ = "Could not write sample Tibia.spr";
+		return false;
+	}
+	if (!loadDat(dat_path) || !loadSpr(spr_path)) {
+		return false;
+	}
+	last_error_.clear();
+	return true;
 }
 
 void EditorSession::paintGround(const Position& position, uint16_t item_id) {
@@ -135,6 +161,13 @@ void EditorSession::centerOnOccupied() {
 		setCamera(static_cast<int>(sx / count), static_cast<int>(sy / count));
 		setFloor(preferred_floor);
 	}
+}
+
+uint16_t EditorSession::spriteIdForItem(uint16_t item_id) const {
+	if (const ItemType* type = items_.get(item_id)) {
+		return type->sprite_id;
+	}
+	return 0;
 }
 
 } // namespace core

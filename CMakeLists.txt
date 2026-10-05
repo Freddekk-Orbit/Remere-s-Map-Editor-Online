@@ -24,7 +24,12 @@ set(RME_CORE_SOURCES
   src/rme/core/otbm.cpp
   src/rme/core/action.cpp
   src/rme/core/items_dat.cpp
+  src/rme/core/sprites.cpp
   src/rme/core/session.cpp
+)
+
+set(RME_GFX_SOURCES
+  src/rme/gfx/sprite_atlas.cpp
 )
 
 add_executable(rme_wasm
@@ -32,6 +37,7 @@ add_executable(rme_wasm
   src/wasm/asset_bridge.cpp
   src/wasm/wx_compat_sanity.cpp
   ${RME_CORE_SOURCES}
+  ${RME_GFX_SOURCES}
 )
 
 target_include_directories(rme_wasm PRIVATE

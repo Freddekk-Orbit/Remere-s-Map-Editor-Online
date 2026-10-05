@@ -24,3 +24,9 @@ Port the C++ desktop Remere's Map Editor (https://github.com/opentibiabr/remeres
 - C++ map core lives in `src/rme/core` (OTBM FileHandle I/O, tiles, undo/redo). Keep that logic independent of ImGui.
 - Prefer loading `.otbm` / `.dat` / `.spr` from VFS paths already populated by the asset bridge.
 - Floor drawing in the browser is an ImGui canvas over the C++ tile map until the sprite/WebGL pipeline lands.
+
+## Phase 3 Conventions
+- Parse classic Tibia.dat as an attribute-byte stream (terminated by `0xFF`), not items.otb 32-bit flags.
+- Decode/encode classic `.spr` 32×32 magenta-key RLE on the CPU in `src/rme/core`. Pack GPU textures in `src/rme/gfx`.
+- Do not require copyrighted client files: keep synthetic sample `.dat` / `.spr` for tests and first paint.
+- ImGui may `AddImage` atlas UVs for floors and the item palette; fall back to a color swatch when a sprite is missing.
