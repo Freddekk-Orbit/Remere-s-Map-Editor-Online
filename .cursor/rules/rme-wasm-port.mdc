@@ -21,3 +21,6 @@ Port the C++ desktop Remere's Map Editor (https://github.com/opentibiabr/remeres
 - New UI belongs in ImGui. Do not add wxWidgets widgets or `#include <wx/...>` in new files.
 - Browser I/O goes through `src/wasm` (`MEMFS` `/uploads`, `IDBFS` `/persist`, FETCH). Legacy `fopen`/`FILE*` is acceptable only after files are already in the VFS.
 - Map/item/OTBM/undo logic belongs in `src/rme/core`. ImGui only calls `EditorSession`.
+- DAT/SPR CPU decode belongs in `src/rme/core`. GL atlas upload belongs in `src/rme/gfx`.
+- Classic `.dat` is an attribute-byte stream ended by `0xFF`, then width/height/layers/patterns/phases and sprite ids.
+- Prefer synthetic sample client files for tests; never vendor copyrighted Tibia assets.

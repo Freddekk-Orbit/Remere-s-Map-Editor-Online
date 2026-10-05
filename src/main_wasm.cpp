@@ -1,5 +1,6 @@
 #include "platform/platform.h"
 #include "rme/core/session.h"
+#include "rme/gfx/sprite_atlas.h"
 #include "wasm/asset_bridge.h"
 
 #include "imgui.h"
@@ -117,7 +118,12 @@ public:
 		ImGui_ImplOpenGL3_Init(glsl_version_);
 
 		rme::wasm::InitVirtualFileSystem();
+		session_.createSampleAssets(
+			std::string(rme::wasm::kAssetDir) + "/Tibia.dat",
+			std::string(rme::wasm::kAssetDir) + "/Tibia.spr"
+		);
 		session_.createSampleMap(std::string(rme::wasm::kUploadDir) + "/sample.otbm");
+		ReloadAtlas();
 		return true;
 	}
 
@@ -179,6 +185,7 @@ public:
 	}
 
 	void Shutdown() {
+		atlas_.destroy();
 		ImGui_ImplOpenGL3_Shutdown();
 		ImGui_ImplSDL2_Shutdown();
 		ImGui::DestroyContext();
@@ -232,6 +239,13 @@ private:
 				if (ImGui::MenuItem("Create sample OTBM")) {
 					session_.createSampleMap(std::string(rme::wasm::kUploadDir) + "/sample.otbm");
 				}
+				if (ImGui::MenuItem("Create sample .dat / .spr")) {
+					session_.createSampleAssets(
+						std::string(rme::wasm::kAssetDir) + "/Tibia.dat",
+						std::string(rme::wasm::kAssetDir) + "/Tibia.spr"
+					);
+					ReloadAtlas();
+				}
 				if (ImGui::MenuItem("Upload client / map files...")) {
 					rme::wasm::OpenBrowserFilePicker();
 				}
@@ -250,6 +264,7 @@ private:
 			}
 			if (ImGui::BeginMenu("View")) {
 				ImGui::MenuItem("Map canvas", nullptr, &show_canvas_);
+				ImGui::MenuItem("Item palette", nullptr, &show_palette_);
 				ImGui::MenuItem("Map inspector", nullptr, &show_inspector_);
 				ImGui::MenuItem("Asset browser", nullptr, &show_assets_);
 				ImGui::MenuItem("Build log", nullptr, &show_log_);
@@ -257,7 +272,7 @@ private:
 				ImGui::EndMenu();
 			}
 			if (ImGui::BeginMenu("Help")) {
-				ImGui::MenuItem("About Phase 2", nullptr, &show_about_);
+				ImGui::MenuItem("About Phase 3", nullptr, &show_about_);
 				ImGui::EndMenu();
 			}
 			ImGui::SameLine(ImGui::GetWindowWidth() - 220.0f);
@@ -282,6 +297,9 @@ private:
 		if (show_canvas_) {
 			DrawMapCanvas();
 		}
+		if (show_palette_) {
+			DrawItemPalette();
+		}
 		if (show_assets_) {
 			DrawAssetBrowser();
 		}
@@ -299,14 +317,14 @@ private:
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 16.0f, viewport->WorkPos.y + 28.0f), ImGuiCond_FirstUseEver);
 		ImGui::SetNextWindowSize(ImVec2(460.0f, 240.0f), ImGuiCond_FirstUseEver);
-		if (!ImGui::Begin("RME Wasm — Phase 2", nullptr, ImGuiWindowFlags_NoCollapse)) {
+		if (!ImGui::Begin("RME Wasm - Phase 3", nullptr, ImGuiWindowFlags_NoCollapse)) {
 			ImGui::End();
 			return;
 		}
 
 		ImGui::TextWrapped(
-			"C++ map core is live: OTBM load/save (upstream FileHandle node stream), "
-			"tile edits, and undo/redo. Sprites come later; the canvas draws item IDs."
+			"Sample Tibia.dat / Tibia.spr are in /assets. Floor tiles use the GPU sprite "
+			"atlas; pick a brush from the item palette. Unknown ids still fall back to a color swatch."
 		);
 		ImGui::Separator();
 		ImGui::Text("Map: %s  %dx%d  tiles=%zu  items=%zu",
@@ -341,15 +359,16 @@ private:
 			ImGui::End();
 			return;
 		}
-		ImGui::TextUnformatted("Remere's Map Editor — WebAssembly port");
+		ImGui::TextUnformatted("Remere's Map Editor - WebAssembly port");
 		ImGui::Separator();
 		ImGui::TextWrapped(
-			"Phase 2 imports the C++ map core: OTBM node I/O from Remere's FileHandle, "
-			"a tile map, and an action queue for undo/redo. The browser UI stays ImGui."
+			"Phase 3 loads classic .dat item properties and .spr frames on the CPU, packs "
+			"them into a WebGL2 atlas, and draws floors plus an item palette in ImGui."
 		);
 		ImGui::Spacing();
 		ImGui::BulletText("UI: Dear ImGui (SDL2 + OpenGL ES 3.0 / WebGL2)");
-		ImGui::BulletText("Core: OTBM + tiles + undo/redo in src/rme/core");
+		ImGui::BulletText("Core: OTBM + DAT/SPR + tiles + undo/redo in src/rme/core");
+		ImGui::BulletText("GPU atlas: src/rme/gfx (GL stays out of the map core)");
 		ImGui::BulletText("wxWidgets: stubbed via src/wx_stub include path");
 		ImGui::End();
 	}
@@ -435,16 +454,38 @@ private:
 				break;
 			case rme::wasm::AssetKind::Spr:
 				session_.loadSpr(file.vfs_path);
+				ReloadAtlas();
 				break;
 			default:
 				break;
 		}
 	}
 
+	void ReloadAtlas() {
+		atlas_.upload(session_.sprites());
+	}
+
+	ImTextureID AtlasTexture() const {
+		return static_cast<ImTextureID>(static_cast<intptr_t>(atlas_.texture()));
+	}
+
+	void DrawSprite(ImDrawList* draw, const ImVec2& p0, const ImVec2& p1, uint16_t sprite_id, ImU32 fallback) const {
+		if (atlas_.valid() && atlas_.has(sprite_id)) {
+			const auto uv = atlas_.uv(sprite_id);
+			draw->AddImage(AtlasTexture(), p0, p1, ImVec2(uv.u0, uv.v0), ImVec2(uv.u1, uv.v1));
+			return;
+		}
+		draw->AddRectFilled(p0, p1, fallback);
+	}
+
+	static ImU32 FallbackColor(uint16_t id) {
+		return IM_COL32(40 + (id * 37) % 140, 70 + (id * 17) % 120, 50 + (id * 53) % 130, 255);
+	}
+
 	void DrawMapInspector() {
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 490.0f, viewport->WorkPos.y + 28.0f), ImGuiCond_FirstUseEver);
-		ImGui::SetNextWindowSize(ImVec2(360.0f, 280.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(400.0f, 300.0f), ImGuiCond_FirstUseEver);
 		if (!ImGui::Begin("Map inspector", &show_inspector_)) {
 			ImGui::End();
 			return;
@@ -461,8 +502,14 @@ private:
 		ImGui::Text("Undo stack: %zu / %zu", session_.history().undoDepth(), session_.history().size());
 		const auto& assets = session_.assets();
 		ImGui::Separator();
-		ImGui::Text(".dat: %s  items=%u outfits=%u", assets.dat_loaded ? "loaded" : "—", assets.item_count, assets.outfit_count);
-		ImGui::Text(".spr: %s  sprites=%u", assets.spr_loaded ? "loaded" : "—", assets.sprite_count);
+		ImGui::Text(".dat: %s  items=%zu (header %u)", assets.dat_loaded ? "loaded" : "-", session_.items().size(), assets.item_count);
+		ImGui::Text(".spr: %s  sprites=%u  atlas=%s",
+			assets.spr_loaded ? "loaded" : "-",
+			assets.sprite_count,
+			atlas_.valid() ? "ready" : "-");
+		if (const auto* brush = session_.brushType()) {
+			ImGui::Text("Brush: %u %s  sprite=%u", brush->id, brush->name.c_str(), brush->sprite_id);
+		}
 		if (!map.getWarnings().empty()) {
 			ImGui::Separator();
 			ImGui::Text("Warnings: %zu", map.getWarnings().size());
@@ -473,7 +520,7 @@ private:
 	void DrawMapCanvas() {
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 16.0f, viewport->WorkPos.y + 280.0f), ImGuiCond_FirstUseEver);
-		ImGui::SetNextWindowSize(ImVec2(720.0f, 520.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(580.0f, 680.0f), ImGuiCond_FirstUseEver);
 		if (!ImGui::Begin("Map canvas", &show_canvas_)) {
 			ImGui::End();
 			return;
@@ -495,10 +542,14 @@ private:
 		if (ImGui::InputInt("Brush item id", &brush)) {
 			session_.setBrushId(static_cast<uint16_t>(std::clamp(brush, 0, 65535)));
 		}
+		if (const auto* brush_type = session_.brushType()) {
+			ImGui::SameLine();
+			ImGui::TextDisabled("%s", brush_type->name.c_str());
+		}
 		ImGui::TextDisabled("Left-click paints ground. Shift+click erases the tile.");
 
-		const int view = 24;
-		const float tile_px = 18.0f;
+		const int view = 16;
+		const float tile_px = 32.0f;
 		const ImVec2 origin = ImGui::GetCursorScreenPos();
 		ImDrawList* draw = ImGui::GetWindowDrawList();
 		ImGui::InvisibleButton("map_grid", ImVec2(view * tile_px, view * tile_px));
@@ -510,18 +561,20 @@ private:
 				const int x = session_.cameraX() - view / 2 + col;
 				const int y = session_.cameraY() - view / 2 + row;
 				const ImVec2 p0(origin.x + col * tile_px, origin.y + row * tile_px);
-				const ImVec2 p1(p0.x + tile_px - 1.0f, p0.y + tile_px - 1.0f);
-				ImU32 color = IM_COL32(28, 32, 36, 255);
+				const ImVec2 p1(p0.x + tile_px, p0.y + tile_px);
 				const rme::core::Tile* tile = session_.map().getTile(Position(x, y, session_.floor()));
+				draw->AddRectFilled(p0, p1, IM_COL32(20, 22, 26, 255));
 				if (tile && tile->getGround()) {
 					const uint16_t id = tile->getGround()->getID();
-					color = IM_COL32(40 + (id * 37) % 140, 70 + (id * 17) % 120, 50 + (id * 53) % 130, 255);
-				} else if (tile && !tile->getItems().empty()) {
-					color = IM_COL32(90, 70, 40, 255);
+					DrawSprite(draw, p0, p1, session_.spriteIdForItem(id), FallbackColor(id));
 				}
-				draw->AddRectFilled(p0, p1, color);
+				if (tile) {
+					for (const auto& item : tile->getItems()) {
+						DrawSprite(draw, p0, p1, session_.spriteIdForItem(item.getID()), FallbackColor(item.getID()));
+					}
+				}
 				if (x == session_.cameraX() && y == session_.cameraY()) {
-					draw->AddRect(p0, p1, IM_COL32(240, 240, 240, 220));
+					draw->AddRect(p0, ImVec2(p1.x - 1.0f, p1.y - 1.0f), IM_COL32(240, 240, 240, 220));
 				}
 			}
 		}
@@ -541,6 +594,56 @@ private:
 					session_.paintGround(pos, session_.brushId());
 				}
 			}
+		}
+		ImGui::End();
+	}
+
+	void DrawItemPalette() {
+		const ImGuiViewport* viewport = ImGui::GetMainViewport();
+		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 750.0f, viewport->WorkPos.y + 28.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(360.0f, 420.0f), ImGuiCond_FirstUseEver);
+		if (!ImGui::Begin("Item palette", &show_palette_)) {
+			ImGui::End();
+			return;
+		}
+
+		ImGui::Text("%zu items  |  brush %u", session_.items().size(), session_.brushId());
+		ImGui::Separator();
+
+		const float cell = 40.0f;
+		const float spacing = 6.0f;
+		const float avail = ImGui::GetContentRegionAvail().x;
+		const int columns = std::max(1, static_cast<int>((avail + spacing) / (cell + spacing)));
+		int index = 0;
+		for (const auto& type : session_.items().items()) {
+			if (index % columns != 0) {
+				ImGui::SameLine(0.0f, spacing);
+			}
+			ImGui::PushID(type.id);
+			const ImVec2 p0 = ImGui::GetCursorScreenPos();
+			const ImVec2 p1(p0.x + cell, p0.y + cell);
+			if (ImGui::InvisibleButton("item", ImVec2(cell, cell))) {
+				session_.setBrushId(type.id);
+			}
+			ImDrawList* draw = ImGui::GetWindowDrawList();
+			draw->AddRectFilled(p0, p1, IM_COL32(18, 20, 22, 255));
+			DrawSprite(draw, p0, p1, type.sprite_id, FallbackColor(type.id));
+			if (type.id == session_.brushId()) {
+				draw->AddRect(p0, p1, IM_COL32(250, 230, 80, 255), 0.0f, 0, 2.0f);
+			} else if (ImGui::IsItemHovered()) {
+				draw->AddRect(p0, p1, IM_COL32(220, 220, 220, 180));
+			}
+			if (ImGui::IsItemHovered()) {
+				ImGui::SetTooltip("%u %s\nsprite %u%s%s%s",
+					type.id,
+					type.name.c_str(),
+					type.sprite_id,
+					type.ground ? "\nground" : "",
+					type.not_walkable ? "\nnot walkable" : "",
+					type.pickupable ? "\npickupable" : "");
+			}
+			ImGui::PopID();
+			++index;
 		}
 		ImGui::End();
 	}
@@ -569,9 +672,11 @@ private:
 	bool show_about_ = false;
 	bool show_canvas_ = true;
 	bool show_inspector_ = true;
+	bool show_palette_ = true;
 	ImVec4 clear_color_ = ImVec4(0.07f, 0.08f, 0.09f, 1.00f);
 	char fetch_url_[512] = "";
 	rme::core::EditorSession session_;
+	rme::gfx::SpriteAtlas atlas_;
 };
 
 WasmEditorApp* g_app = nullptr;

@@ -2,16 +2,18 @@
 
 WebAssembly port of [Remere's Map Editor](https://github.com/opentibiabr/remeres-map-editor/) — C++ map core in the browser via Emscripten, Dear ImGui, and WebGL2.
 
-This repository starts at **Phase 1: Build Pipeline & UI Decoupling**. The original desktop editor is a wxWidgets + OpenGL application. The browser target removes that windowing stack and boots an ImGui render loop instead.
+This repository is a phased WebAssembly port. The original desktop editor is a wxWidgets + OpenGL application. The browser target removes that windowing stack and boots an ImGui render loop instead.
 
-## Phase 2 status
+## Phase 3 status
 
-- C++ map core in `src/rme/core`: OTBM load/save (upstream FileHandle node stream), tiles, towns/waypoints, undo/redo
-- `.dat` / `.spr` header inspection (item and sprite counts)
-- ImGui map canvas: paint/erase ground items by ID, floor slider, Ctrl+Z / Ctrl+Y
-- Host test: `rme_core_test` (native CMake, no Emscripten) round-trips an OTBM
+- Classic `.dat` item stream (attribute bytes until `0xFF`, then 8.60-style sprite layout) in `ItemDatabase`
+- Classic `.spr` 32×32 magenta-key RLE decode/encode in `SpriteSheet`
+- Synthetic `/assets/Tibia.dat` + `/assets/Tibia.spr` (items 100–105) so tests do not need copyrighted client files
+- GPU `SpriteAtlas` in `src/rme/gfx` (GL_RGBA / NEAREST) — OpenGL stays out of the map core
+- ImGui floor sprites + item palette; unknown ids still fall back to a color swatch
+- Host test: `rme_core_test` round-trips OTBM, DAT properties, and SPR encode/decode
 
-Phase 1 (build pipeline, VFS, wx stubs, ImGui loop) remains the browser shell. Full sprite/WebGL floor rendering is still ahead.
+Phase 1 (build pipeline, VFS, wx stubs) and Phase 2 (OTBM / tiles / undo) remain underneath.
 
 ## Repository layout
 
@@ -19,7 +21,8 @@ Phase 1 (build pipeline, VFS, wx stubs, ImGui loop) remains the browser shell. F
 CMakeLists.txt            Dual-target build (emcmake → Wasm, cmake → native ImGui preview)
 cmake/FetchImGui.cmake    Pins Dear ImGui (or uses third_party/imgui)
 src/main_wasm.cpp         Browser / preview entry + ImGui loop
-src/rme/core/             OTBM / tile map / undo-redo (no ImGui)
+src/rme/core/             OTBM / DAT / SPR / tile map / undo-redo (no ImGui, no GL)
+src/rme/gfx/              WebGL2 sprite atlas (UI-side only)
 src/platform/platform.h   RME_PLATFORM_WASM / RME_USE_WXWIDGETS switches
 src/wasm/                 MEMFS / IDBFS / FETCH bridge
 src/wx_stub/              Drop-in replacements for #include <wx/...>
