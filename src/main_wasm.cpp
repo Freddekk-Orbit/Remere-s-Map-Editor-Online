@@ -179,11 +179,26 @@ private:
 		style.GrabRounding = 3.0f;
 		style.TabRounding = 3.0f;
 		style.WindowBorderSize = 1.0f;
-		style.Colors[ImGuiCol_WindowBg] = ImVec4(0.10f, 0.11f, 0.13f, 0.96f);
-		style.Colors[ImGuiCol_TitleBg] = ImVec4(0.12f, 0.16f, 0.14f, 1.00f);
-		style.Colors[ImGuiCol_TitleBgActive] = ImVec4(0.16f, 0.28f, 0.20f, 1.00f);
-		style.Colors[ImGuiCol_Header] = ImVec4(0.16f, 0.32f, 0.22f, 0.80f);
-		style.Colors[ImGuiCol_Button] = ImVec4(0.18f, 0.36f, 0.24f, 0.80f);
+		style.FrameBorderSize = 1.0f;
+		style.ScrollbarSize = 16.0f;
+		ImGui::GetIO().FontGlobalScale = 1.15f;
+		style.Colors[ImGuiCol_Text] = ImVec4(0.94f, 0.95f, 0.96f, 1.00f);
+		style.Colors[ImGuiCol_TextDisabled] = ImVec4(0.62f, 0.66f, 0.68f, 1.00f);
+		style.Colors[ImGuiCol_WindowBg] = ImVec4(0.16f, 0.17f, 0.19f, 0.98f);
+		style.Colors[ImGuiCol_ChildBg] = ImVec4(0.14f, 0.15f, 0.17f, 1.00f);
+		style.Colors[ImGuiCol_PopupBg] = ImVec4(0.14f, 0.16f, 0.18f, 0.98f);
+		style.Colors[ImGuiCol_MenuBarBg] = ImVec4(0.18f, 0.20f, 0.22f, 1.00f);
+		style.Colors[ImGuiCol_TitleBg] = ImVec4(0.18f, 0.24f, 0.20f, 1.00f);
+		style.Colors[ImGuiCol_TitleBgActive] = ImVec4(0.22f, 0.40f, 0.28f, 1.00f);
+		style.Colors[ImGuiCol_FrameBg] = ImVec4(0.22f, 0.24f, 0.26f, 1.00f);
+		style.Colors[ImGuiCol_Header] = ImVec4(0.22f, 0.40f, 0.28f, 0.90f);
+		style.Colors[ImGuiCol_HeaderHovered] = ImVec4(0.28f, 0.50f, 0.34f, 0.95f);
+		style.Colors[ImGuiCol_Button] = ImVec4(0.24f, 0.46f, 0.30f, 0.95f);
+		style.Colors[ImGuiCol_ButtonHovered] = ImVec4(0.30f, 0.56f, 0.36f, 1.00f);
+		style.Colors[ImGuiCol_TableHeaderBg] = ImVec4(0.20f, 0.28f, 0.22f, 1.00f);
+		style.Colors[ImGuiCol_TableRowBg] = ImVec4(0.17f, 0.18f, 0.20f, 1.00f);
+		style.Colors[ImGuiCol_TableRowBgAlt] = ImVec4(0.19f, 0.21f, 0.22f, 1.00f);
+		style.Colors[ImGuiCol_Border] = ImVec4(0.38f, 0.42f, 0.40f, 0.70f);
 	}
 
 	void DrawUi() {
@@ -232,8 +247,8 @@ private:
 
 	void DrawWelcomeOverlay() {
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
-		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 16.0f, viewport->WorkPos.y + 36.0f), ImGuiCond_FirstUseEver);
-		ImGui::SetNextWindowSize(ImVec2(420.0f, 220.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 16.0f, viewport->WorkPos.y + 28.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(460.0f, 240.0f), ImGuiCond_FirstUseEver);
 		if (!ImGui::Begin("RME Wasm — Phase 1", nullptr, ImGuiWindowFlags_NoCollapse)) {
 			ImGui::End();
 			return;
@@ -257,6 +272,8 @@ private:
 	}
 
 	void DrawAbout() {
+		const ImGuiViewport* viewport = ImGui::GetMainViewport();
+		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 500.0f, viewport->WorkPos.y + 28.0f), ImGuiCond_FirstUseEver);
 		ImGui::SetNextWindowSize(ImVec2(520.0f, 280.0f), ImGuiCond_FirstUseEver);
 		if (!ImGui::Begin("About Remere's Map Editor (Wasm)", &show_about_)) {
 			ImGui::End();
@@ -278,7 +295,9 @@ private:
 	}
 
 	void DrawAssetBrowser() {
-		ImGui::SetNextWindowSize(ImVec2(560.0f, 360.0f), ImGuiCond_FirstUseEver);
+		const ImGuiViewport* viewport = ImGui::GetMainViewport();
+		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 16.0f, viewport->WorkPos.y + 280.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(720.0f, 300.0f), ImGuiCond_FirstUseEver);
 		if (!ImGui::Begin("Asset browser", &show_assets_)) {
 			ImGui::End();
 			return;
@@ -325,7 +344,9 @@ private:
 	}
 
 	void DrawLog() {
-		ImGui::SetNextWindowSize(ImVec2(480.0f, 220.0f), ImGuiCond_FirstUseEver);
+		const ImGuiViewport* viewport = ImGui::GetMainViewport();
+		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 750.0f, viewport->WorkPos.y + 280.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(420.0f, 300.0f), ImGuiCond_FirstUseEver);
 		if (!ImGui::Begin("VFS log", &show_log_)) {
 			ImGui::End();
 			return;
