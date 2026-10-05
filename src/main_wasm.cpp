@@ -317,7 +317,7 @@ private:
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 16.0f, viewport->WorkPos.y + 28.0f), ImGuiCond_FirstUseEver);
 		ImGui::SetNextWindowSize(ImVec2(460.0f, 240.0f), ImGuiCond_FirstUseEver);
-		if (!ImGui::Begin("RME Wasm — Phase 3", nullptr, ImGuiWindowFlags_NoCollapse)) {
+		if (!ImGui::Begin("RME Wasm - Phase 3", nullptr, ImGuiWindowFlags_NoCollapse)) {
 			ImGui::End();
 			return;
 		}
@@ -359,7 +359,7 @@ private:
 			ImGui::End();
 			return;
 		}
-		ImGui::TextUnformatted("Remere's Map Editor — WebAssembly port");
+		ImGui::TextUnformatted("Remere's Map Editor - WebAssembly port");
 		ImGui::Separator();
 		ImGui::TextWrapped(
 			"Phase 3 loads classic .dat item properties and .spr frames on the CPU, packs "
@@ -485,7 +485,7 @@ private:
 	void DrawMapInspector() {
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 490.0f, viewport->WorkPos.y + 28.0f), ImGuiCond_FirstUseEver);
-		ImGui::SetNextWindowSize(ImVec2(360.0f, 280.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(400.0f, 300.0f), ImGuiCond_FirstUseEver);
 		if (!ImGui::Begin("Map inspector", &show_inspector_)) {
 			ImGui::End();
 			return;
@@ -502,11 +502,11 @@ private:
 		ImGui::Text("Undo stack: %zu / %zu", session_.history().undoDepth(), session_.history().size());
 		const auto& assets = session_.assets();
 		ImGui::Separator();
-		ImGui::Text(".dat: %s  items=%zu (header %u)", assets.dat_loaded ? "loaded" : "—", session_.items().size(), assets.item_count);
+		ImGui::Text(".dat: %s  items=%zu (header %u)", assets.dat_loaded ? "loaded" : "-", session_.items().size(), assets.item_count);
 		ImGui::Text(".spr: %s  sprites=%u  atlas=%s",
-			assets.spr_loaded ? "loaded" : "—",
+			assets.spr_loaded ? "loaded" : "-",
 			assets.sprite_count,
-			atlas_.valid() ? "ready" : "—");
+			atlas_.valid() ? "ready" : "-");
 		if (const auto* brush = session_.brushType()) {
 			ImGui::Text("Brush: %u %s  sprite=%u", brush->id, brush->name.c_str(), brush->sprite_id);
 		}
@@ -520,7 +520,7 @@ private:
 	void DrawMapCanvas() {
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 16.0f, viewport->WorkPos.y + 280.0f), ImGuiCond_FirstUseEver);
-		ImGui::SetNextWindowSize(ImVec2(720.0f, 520.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(580.0f, 680.0f), ImGuiCond_FirstUseEver);
 		if (!ImGui::Begin("Map canvas", &show_canvas_)) {
 			ImGui::End();
 			return;
