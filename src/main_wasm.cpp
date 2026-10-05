@@ -15,6 +15,7 @@
 	#include <SDL_opengl.h>
 #endif
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <memory>
@@ -117,7 +118,25 @@ public:
 		return true;
 	}
 
+	void SyncCanvasToCssSize() {
+#ifdef __EMSCRIPTEN__
+		double css_w = 0.0;
+		double css_h = 0.0;
+		emscripten_get_element_css_size("#canvas", &css_w, &css_h);
+		const int width = std::max(1, static_cast<int>(css_w));
+		const int height = std::max(1, static_cast<int>(css_h));
+		int fb_w = 0;
+		int fb_h = 0;
+		emscripten_get_canvas_element_size("#canvas", &fb_w, &fb_h);
+		if (fb_w != width || fb_h != height) {
+			emscripten_set_canvas_element_size("#canvas", width, height);
+			SDL_SetWindowSize(window_, width, height);
+		}
+#endif
+	}
+
 	bool Frame() {
+		SyncCanvasToCssSize();
 		SDL_Event event;
 		while (SDL_PollEvent(&event)) {
 			ImGui_ImplSDL2_ProcessEvent(&event);
