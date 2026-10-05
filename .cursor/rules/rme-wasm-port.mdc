@@ -1,0 +1,22 @@
+---
+description: Remere's Map Editor WebAssembly port conventions
+alwaysApply: true
+---
+
+# Project: Remere's Map Editor (RME) - WebAssembly (Wasm) Port
+
+## Core Objective
+Port the C++ desktop Remere's Map Editor (https://github.com/opentibiabr/remeres-map-editor/) to run natively in web browsers using Emscripten (WebAssembly + WebGL2).
+
+## Technical Architecture & Constraints
+1. **UI Framework replacement:** Remove `wxWidgets` dependencies completely. Replace the UI/Windowing system with **Dear ImGui** (`imgui` with Emscripten + WebGL2 bindings).
+2. **Build System:** Use `CMake` configured for `emcmake` (Emscripten SDK).
+3. **Graphics:** Retain OpenGL rendering logic, adapting modern desktop OpenGL calls to **WebGL2 / OpenGL ES 3.0**.
+4. **File System & Assets:** Replace native disk I/O (`std::fstream`, desktop paths) with Emscripten's virtual file system (`MEMFS` / `IDBFS`) and HTML5 Drag-and-Drop / File System Access API.
+5. **Memory & Performance:** Target `-s WASM=1 -s USE_WEBGL2=1 -s ALLOW_MEMORY_GROWTH=1`.
+
+## Code Guidelines
+- Prefer non-blocking asynchronous file handling for loading `.otbm`, `.dat`, `.spr`, and XML assets.
+- Keep C++ core logic (map algorithms, item definitions, floor drawing, undo/redo) intact whenever possible; isolate UI/rendering changes to interface wrappers.
+- New UI belongs in ImGui. Do not add wxWidgets widgets or `#include <wx/...>` in new files.
+- Browser I/O goes through `src/wasm` (`MEMFS` `/uploads`, `IDBFS` `/persist`, FETCH). Legacy `fopen`/`FILE*` is acceptable only after files are already in the VFS.
