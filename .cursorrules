@@ -19,3 +19,8 @@ Port the C++ desktop Remere's Map Editor (https://github.com/opentibiabr/remeres
 - wxWidgets is stubbed via `src/wx_stub` and gated with `RME_PLATFORM_WASM` / `RME_USE_WXWIDGETS`.
 - Do not reintroduce `#include <wx/...>` in new UI code; use ImGui widgets instead.
 - Asset I/O for the web target goes through `rme::wasm` (`MEMFS` `/uploads`, `IDBFS` `/persist`, optional FETCH).
+
+## Phase 2 Conventions
+- C++ map core lives in `src/rme/core` (OTBM FileHandle I/O, tiles, undo/redo). Keep that logic independent of ImGui.
+- Prefer loading `.otbm` / `.dat` / `.spr` from VFS paths already populated by the asset bridge.
+- Floor drawing in the browser is an ImGui canvas over the C++ tile map until the sprite/WebGL pipeline lands.

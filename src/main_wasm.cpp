@@ -1,4 +1,5 @@
 #include "platform/platform.h"
+#include "rme/core/session.h"
 #include "wasm/asset_bridge.h"
 
 #include "imgui.h"
@@ -16,6 +17,7 @@
 #endif
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <memory>
@@ -115,6 +117,7 @@ public:
 		ImGui_ImplOpenGL3_Init(glsl_version_);
 
 		rme::wasm::InitVirtualFileSystem();
+		session_.createSampleMap(std::string(rme::wasm::kUploadDir) + "/sample.otbm");
 		return true;
 	}
 
@@ -223,24 +226,38 @@ private:
 	void DrawUi() {
 		if (ImGui::BeginMainMenuBar()) {
 			if (ImGui::BeginMenu("File")) {
+				if (ImGui::MenuItem("New map")) {
+					session_.newMap();
+				}
+				if (ImGui::MenuItem("Create sample OTBM")) {
+					session_.createSampleMap(std::string(rme::wasm::kUploadDir) + "/sample.otbm");
+				}
 				if (ImGui::MenuItem("Upload client / map files...")) {
 					rme::wasm::OpenBrowserFilePicker();
 				}
-				if (ImGui::MenuItem("Fetch Tibia.dat from /assets URL", nullptr, false, fetch_url_[0] != '\0')) {
-					StartSampleFetch();
+				if (ImGui::MenuItem("Save map to /persist/edited.otbm")) {
+					session_.saveOtbm(std::string(rme::wasm::kPersistDir) + "/edited.otbm");
+					rme::wasm::SyncPersistentStore();
 				}
 				ImGui::Separator();
-				ImGui::MenuItem("Quit is handled by the browser tab", nullptr, false, false);
+				if (ImGui::MenuItem("Undo", "Ctrl+Z", false, session_.canUndo())) {
+					session_.undo();
+				}
+				if (ImGui::MenuItem("Redo", "Ctrl+Y", false, session_.canRedo())) {
+					session_.redo();
+				}
 				ImGui::EndMenu();
 			}
 			if (ImGui::BeginMenu("View")) {
+				ImGui::MenuItem("Map canvas", nullptr, &show_canvas_);
+				ImGui::MenuItem("Map inspector", nullptr, &show_inspector_);
 				ImGui::MenuItem("Asset browser", nullptr, &show_assets_);
 				ImGui::MenuItem("Build log", nullptr, &show_log_);
 				ImGui::MenuItem("ImGui demo", nullptr, &show_demo_);
 				ImGui::EndMenu();
 			}
 			if (ImGui::BeginMenu("Help")) {
-				ImGui::MenuItem("About Phase 1", nullptr, &show_about_);
+				ImGui::MenuItem("About Phase 2", nullptr, &show_about_);
 				ImGui::EndMenu();
 			}
 			ImGui::SameLine(ImGui::GetWindowWidth() - 220.0f);
@@ -248,8 +265,22 @@ private:
 			ImGui::EndMainMenuBar();
 		}
 
+		const ImGuiIO& io = ImGui::GetIO();
+		if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
+			session_.undo();
+		}
+		if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Y, false)) {
+			session_.redo();
+		}
+
 		if (show_about_) {
 			DrawAbout();
+		}
+		if (show_inspector_) {
+			DrawMapInspector();
+		}
+		if (show_canvas_) {
+			DrawMapCanvas();
 		}
 		if (show_assets_) {
 			DrawAssetBrowser();
@@ -268,25 +299,37 @@ private:
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 16.0f, viewport->WorkPos.y + 28.0f), ImGuiCond_FirstUseEver);
 		ImGui::SetNextWindowSize(ImVec2(460.0f, 240.0f), ImGuiCond_FirstUseEver);
-		if (!ImGui::Begin("RME Wasm — Phase 1", nullptr, ImGuiWindowFlags_NoCollapse)) {
+		if (!ImGui::Begin("RME Wasm — Phase 2", nullptr, ImGuiWindowFlags_NoCollapse)) {
 			ImGui::End();
 			return;
 		}
 
 		ImGui::TextWrapped(
-			"wxWidgets has been decoupled from the browser entry point. "
-			"This loop is Dear ImGui + SDL2 + WebGL2, driven by emscripten_set_main_loop()."
+			"C++ map core is live: OTBM load/save (upstream FileHandle node stream), "
+			"tile edits, and undo/redo. Sprites come later; the canvas draws item IDs."
 		);
 		ImGui::Separator();
-		ImGui::Text("VFS ready:      %s", rme::wasm::IsFileSystemReady() ? "yes" : "no");
-		ImGui::Text("IDBFS persist:  %s", rme::wasm::IsPersistentReady() ? "yes" : "pending / unavailable");
-		ImGui::Text("Uploaded files: %d", static_cast<int>(rme::wasm::ListVirtualFiles().size()));
+		ImGui::Text("Map: %s  %dx%d  tiles=%zu  items=%zu",
+			session_.map().getName().c_str(),
+			session_.map().getWidth(),
+			session_.map().getHeight(),
+			session_.map().tileCount(),
+			session_.map().itemCount());
+		if (!session_.lastError().empty()) {
+			ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", session_.lastError().c_str());
+		}
 		ImGui::Spacing();
 		if (ImGui::Button("Open file picker")) {
 			rme::wasm::OpenBrowserFilePicker();
 		}
 		ImGui::SameLine();
-		ImGui::TextDisabled("or drop .otbm / .dat / .spr on the page");
+		if (ImGui::Button("Undo") && session_.canUndo()) {
+			session_.undo();
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Redo") && session_.canRedo()) {
+			session_.redo();
+		}
 		ImGui::End();
 	}
 
@@ -301,14 +344,12 @@ private:
 		ImGui::TextUnformatted("Remere's Map Editor — WebAssembly port");
 		ImGui::Separator();
 		ImGui::TextWrapped(
-			"Phase 1 establishes the Emscripten build, replaces wxApp::OnRun() with a "
-			"browser main loop, and mounts MEMFS/IDBFS so client files can be imported "
-			"without desktop disk I/O. Map algorithms stay in C++; only the windowing "
-			"and file-bridge layers are new."
+			"Phase 2 imports the C++ map core: OTBM node I/O from Remere's FileHandle, "
+			"a tile map, and an action queue for undo/redo. The browser UI stays ImGui."
 		);
 		ImGui::Spacing();
 		ImGui::BulletText("UI: Dear ImGui (SDL2 + OpenGL ES 3.0 / WebGL2)");
-		ImGui::BulletText("Build: emcmake + CMake");
+		ImGui::BulletText("Core: OTBM + tiles + undo/redo in src/rme/core");
 		ImGui::BulletText("wxWidgets: stubbed via src/wx_stub include path");
 		ImGui::End();
 	}
@@ -350,6 +391,10 @@ private:
 				ImGui::TextUnformatted(file.vfs_path.c_str());
 				ImGui::TableSetColumnIndex(4);
 				ImGui::PushID(file.vfs_path.c_str());
+				if (ImGui::SmallButton("Load")) {
+					LoadVirtualFile(file);
+				}
+				ImGui::SameLine();
 				if (!file.persistent && ImGui::SmallButton("Persist")) {
 					rme::wasm::PersistUploadedFile(file.vfs_path);
 				} else if (file.persistent) {
@@ -380,6 +425,126 @@ private:
 		ImGui::End();
 	}
 
+	void LoadVirtualFile(const rme::wasm::VirtualFile& file) {
+		switch (file.kind) {
+			case rme::wasm::AssetKind::Otbm:
+				session_.loadOtbm(file.vfs_path);
+				break;
+			case rme::wasm::AssetKind::Dat:
+				session_.loadDat(file.vfs_path);
+				break;
+			case rme::wasm::AssetKind::Spr:
+				session_.loadSpr(file.vfs_path);
+				break;
+			default:
+				break;
+		}
+	}
+
+	void DrawMapInspector() {
+		const ImGuiViewport* viewport = ImGui::GetMainViewport();
+		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 490.0f, viewport->WorkPos.y + 28.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(360.0f, 280.0f), ImGuiCond_FirstUseEver);
+		if (!ImGui::Begin("Map inspector", &show_inspector_)) {
+			ImGui::End();
+			return;
+		}
+
+		const auto& map = session_.map();
+		ImGui::Text("Name: %s", map.getName().c_str());
+		ImGui::TextWrapped("%s", map.getDescription().c_str());
+		ImGui::Text("Size: %d x %d", map.getWidth(), map.getHeight());
+		ImGui::Text("OTBM v%u  items %u.%u", map.getVersion().otbm, map.getVersion().items_major, map.getVersion().items_minor);
+		ImGui::Text("Tiles: %zu   Items: %zu   Floor %d: %zu",
+			map.tileCount(), map.itemCount(), session_.floor(), map.countTilesOnFloor(session_.floor()));
+		ImGui::Text("Towns: %zu   Waypoints: %zu", map.towns().size(), map.waypoints().size());
+		ImGui::Text("Undo stack: %zu / %zu", session_.history().undoDepth(), session_.history().size());
+		const auto& assets = session_.assets();
+		ImGui::Separator();
+		ImGui::Text(".dat: %s  items=%u outfits=%u", assets.dat_loaded ? "loaded" : "—", assets.item_count, assets.outfit_count);
+		ImGui::Text(".spr: %s  sprites=%u", assets.spr_loaded ? "loaded" : "—", assets.sprite_count);
+		if (!map.getWarnings().empty()) {
+			ImGui::Separator();
+			ImGui::Text("Warnings: %zu", map.getWarnings().size());
+		}
+		ImGui::End();
+	}
+
+	void DrawMapCanvas() {
+		const ImGuiViewport* viewport = ImGui::GetMainViewport();
+		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 16.0f, viewport->WorkPos.y + 280.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(720.0f, 520.0f), ImGuiCond_FirstUseEver);
+		if (!ImGui::Begin("Map canvas", &show_canvas_)) {
+			ImGui::End();
+			return;
+		}
+
+		int camera_x = session_.cameraX();
+		int camera_y = session_.cameraY();
+		int floor = session_.floor();
+		int brush = session_.brushId();
+		if (ImGui::SliderInt("X", &camera_x, 0, std::max(0, session_.map().getWidth() - 1))) {
+			session_.setCamera(camera_x, camera_y);
+		}
+		if (ImGui::SliderInt("Y", &camera_y, 0, std::max(0, session_.map().getHeight() - 1))) {
+			session_.setCamera(camera_x, camera_y);
+		}
+		if (ImGui::SliderInt("Floor", &floor, rme::MapMinLayer, rme::MapMaxLayer)) {
+			session_.setFloor(floor);
+		}
+		if (ImGui::InputInt("Brush item id", &brush)) {
+			session_.setBrushId(static_cast<uint16_t>(std::clamp(brush, 0, 65535)));
+		}
+		ImGui::TextDisabled("Left-click paints ground. Shift+click erases the tile.");
+
+		const int view = 24;
+		const float tile_px = 18.0f;
+		const ImVec2 origin = ImGui::GetCursorScreenPos();
+		ImDrawList* draw = ImGui::GetWindowDrawList();
+		ImGui::InvisibleButton("map_grid", ImVec2(view * tile_px, view * tile_px));
+		const bool hovered = ImGui::IsItemHovered();
+		const ImVec2 mouse = ImGui::GetIO().MousePos;
+
+		for (int row = 0; row < view; ++row) {
+			for (int col = 0; col < view; ++col) {
+				const int x = session_.cameraX() - view / 2 + col;
+				const int y = session_.cameraY() - view / 2 + row;
+				const ImVec2 p0(origin.x + col * tile_px, origin.y + row * tile_px);
+				const ImVec2 p1(p0.x + tile_px - 1.0f, p0.y + tile_px - 1.0f);
+				ImU32 color = IM_COL32(28, 32, 36, 255);
+				const rme::core::Tile* tile = session_.map().getTile(Position(x, y, session_.floor()));
+				if (tile && tile->getGround()) {
+					const uint16_t id = tile->getGround()->getID();
+					color = IM_COL32(40 + (id * 37) % 140, 70 + (id * 17) % 120, 50 + (id * 53) % 130, 255);
+				} else if (tile && !tile->getItems().empty()) {
+					color = IM_COL32(90, 70, 40, 255);
+				}
+				draw->AddRectFilled(p0, p1, color);
+				if (x == session_.cameraX() && y == session_.cameraY()) {
+					draw->AddRect(p0, p1, IM_COL32(240, 240, 240, 220));
+				}
+			}
+		}
+
+		if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+			const int col = static_cast<int>((mouse.x - origin.x) / tile_px);
+			const int row = static_cast<int>((mouse.y - origin.y) / tile_px);
+			if (col >= 0 && col < view && row >= 0 && row < view) {
+				const Position pos(
+					session_.cameraX() - view / 2 + col,
+					session_.cameraY() - view / 2 + row,
+					session_.floor()
+				);
+				if (ImGui::GetIO().KeyShift) {
+					session_.eraseTile(pos);
+				} else {
+					session_.paintGround(pos, session_.brushId());
+				}
+			}
+		}
+		ImGui::End();
+	}
+
 	void StartSampleFetch() {
 		if (fetch_url_[0] == '\0') {
 			return;
@@ -400,10 +565,13 @@ private:
 	bool running_ = true;
 	bool show_demo_ = false;
 	bool show_assets_ = true;
-	bool show_log_ = true;
-	bool show_about_ = true;
+	bool show_log_ = false;
+	bool show_about_ = false;
+	bool show_canvas_ = true;
+	bool show_inspector_ = true;
 	ImVec4 clear_color_ = ImVec4(0.07f, 0.08f, 0.09f, 1.00f);
 	char fetch_url_[512] = "";
+	rme::core::EditorSession session_;
 };
 
 WasmEditorApp* g_app = nullptr;
