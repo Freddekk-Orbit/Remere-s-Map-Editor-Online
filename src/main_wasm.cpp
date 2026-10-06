@@ -996,12 +996,14 @@ private:
 
 	void DrawTileProperties() {
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
-		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 900.0f, viewport->WorkPos.y + 28.0f), ImGuiCond_FirstUseEver);
-		ImGui::SetNextWindowSize(ImVec2(300.0f, 380.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 1210.0f, viewport->WorkPos.y + 28.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(340.0f, 460.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSizeConstraints(ImVec2(280.0f, 320.0f), ImVec2(FLT_MAX, FLT_MAX));
 		if (!ImGui::Begin("Tile properties", &show_properties_)) {
 			ImGui::End();
 			return;
 		}
+		ImGui::PushItemWidth(-1.0f);
 
 		if (follow_camera_) {
 			session_.setInspect(Position(session_.cameraX(), session_.cameraY(), session_.floor()));
@@ -1022,6 +1024,7 @@ private:
 		const rme::core::Item* item = session_.inspectItem();
 		if (!item) {
 			ImGui::TextDisabled("No item on this tile.");
+			ImGui::PopItemWidth();
 			ImGui::End();
 			return;
 		}
@@ -1064,17 +1067,20 @@ private:
 			}
 		}
 		ImGui::TextDisabled("Apply is one undo step.");
+		ImGui::PopItemWidth();
 		ImGui::End();
 	}
 
 	void DrawFind() {
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
-		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 900.0f, viewport->WorkPos.y + 420.0f), ImGuiCond_FirstUseEver);
-		ImGui::SetNextWindowSize(ImVec2(300.0f, 200.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 1210.0f, viewport->WorkPos.y + 500.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(340.0f, 230.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSizeConstraints(ImVec2(260.0f, 180.0f), ImVec2(FLT_MAX, FLT_MAX));
 		if (!ImGui::Begin("Find items", &show_find_)) {
 			ImGui::End();
 			return;
 		}
+		ImGui::PushItemWidth(-1.0f);
 		ImGui::InputInt("Item id", &find_id_);
 		ImGui::InputInt("Action ID", &find_aid_);
 		ImGui::InputInt("Unique ID", &find_uid_);
@@ -1092,6 +1098,7 @@ private:
 			props_stamp_ = 0;
 		}
 		ImGui::TextDisabled("0 means ignore that field. Ctrl+F opens this window.");
+		ImGui::PopItemWidth();
 		ImGui::End();
 	}
 
@@ -1183,7 +1190,9 @@ private:
 						draw->AddTriangleFilled(a, b, c, IM_COL32(40, 220, 230, 220));
 					}
 					if (const rme::core::Item* top = tile->topItem(); top && (top->getActionID() != 0 || top->getUniqueID() != 0)) {
-						draw->AddRectFilled(p0, ImVec2(p0.x + 7.0f, p0.y + 7.0f), IM_COL32(250, 210, 40, 255));
+						const ImVec2 pip1(p0.x + 8.0f, p0.y + 8.0f);
+						draw->AddRectFilled(p0, pip1, IM_COL32(20, 20, 20, 255));
+						draw->AddRectFilled(ImVec2(p0.x + 1.0f, p0.y + 1.0f), ImVec2(pip1.x - 1.0f, pip1.y - 1.0f), IM_COL32(255, 230, 40, 255));
 					}
 				};
 
@@ -1528,7 +1537,7 @@ private:
 	bool show_spawns_ = true;
 	bool show_goto_ = false;
 	bool show_properties_ = true;
-	bool show_find_ = false;
+	bool show_find_ = true;
 	bool show_floor_below_ = true;
 	bool follow_camera_ = false;
 	float zoom_ = 1.0f;
