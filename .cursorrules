@@ -35,3 +35,8 @@ Port the C++ desktop Remere's Map Editor (https://github.com/opentibiabr/remeres
 - Brush, fill, selection, and clipboard logic belongs in `src/rme/core` (`brush.h` + `EditorSession`). ImGui only sends tool events.
 - Drag strokes must be one undo action. Do not commit a history entry per tile.
 - Auto brush resolves from ItemType: ground items replace ground, everything else is an overlay.
+
+## Phase 5 Conventions
+- Minimap pixels come from DAT `minimap_color` (classic 6x6x6 palette). Keep GL upload in `main_wasm`, not in `src/rme/core`.
+- Towns/waypoints and OTBM tile flags (PZ / NoPvP / NoLogout / PvP) belong on the map core. Camera pan/zoom is UI state except `EditorSession::panBy`.
+- Flags brush uses `setFlagMask`; Shift+click clears the selected bits. Town/waypoint edits do not go through undo.

@@ -55,6 +55,8 @@ public:
 
 	uint32_t getHouseID() const { return house_id_; }
 	void setHouseID(uint32_t id) { house_id_ = id; }
+	void setFlag(uint32_t flag) { flags_ |= flag; }
+	void clearFlag(uint32_t flag) { flags_ &= ~flag; }
 
 	std::size_t itemCount() const { return (ground_ ? 1 : 0) + items_.size(); }
 

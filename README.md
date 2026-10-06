@@ -4,15 +4,16 @@ WebAssembly port of [Remere's Map Editor](https://github.com/opentibiabr/remeres
 
 This repository is a phased WebAssembly port. The original desktop editor is a wxWidgets + OpenGL application. The browser target removes that windowing stack and boots an ImGui render loop instead.
 
-## Phase 4 status
+## Phase 5 status
 
-- Editor brushes in `src/rme/core`: Auto / Ground / Item overlay / Eraser / Fill / Select
-- Drag-paint coalesces into one undo step; Auto uses DAT flags to choose ground vs overlay
-- Flood-fill connected ground, rectangle selection, copy/cut/paste, eyedropper
-- ImGui brush toolbar plus canvas hover footprint and selection overlay
-- Host test: `rme_core_test` covers DAT/SPR plus overlay, stroke undo, fill, 3x3, selection, and clipboard
+- Classic 6x6x6 DAT-colored minimap with protection-zone tint (`src/rme/core/minimap`)
+- WASD / arrow pan, mouse-wheel zoom, middle-drag pan on the map canvas
+- Towns and waypoints: add at camera, jump, delete; persisted in OTBM
+- Flags brush paints OTBM tile bits (PZ, NoPvP, NoLogout, PvP) with Shift to clear
+- ImGui minimap (click to jump) plus town/waypoint window
+- Host test: `rme_core_test` covers minimap colors, PZ sample water, flag undo, towns/waypoints, pan
 
-Phase 1–3 (build pipeline, OTBM/undo, sprite atlas) remain underneath.
+Phase 1–4 (build pipeline, OTBM/undo, sprite atlas, brushes) remain underneath.
 
 ## Repository layout
 
@@ -20,7 +21,7 @@ Phase 1–3 (build pipeline, OTBM/undo, sprite atlas) remain underneath.
 CMakeLists.txt            Dual-target build (emcmake → Wasm, cmake → native ImGui preview)
 cmake/FetchImGui.cmake    Pins Dear ImGui (or uses third_party/imgui)
 src/main_wasm.cpp         Browser / preview entry + ImGui loop
-src/rme/core/             OTBM / DAT / SPR / tile map / undo-redo (no ImGui, no GL)
+src/rme/core/             OTBM / DAT / SPR / brushes / minimap / undo-redo (no ImGui, no GL)
 src/rme/gfx/              WebGL2 sprite atlas (UI-side only)
 src/platform/platform.h   RME_PLATFORM_WASM / RME_USE_WXWIDGETS switches
 src/wasm/                 MEMFS / IDBFS / FETCH bridge

@@ -1,5 +1,7 @@
 #include "session.h"
 #include "sprites.h"
+#include "minimap.h"
+#include "tile.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -247,7 +249,72 @@ int main() {
 		return Fail("eyedropper should pick pasted grass");
 	}
 
-	std::printf("rme core test ok: %zu tiles, 6 dat items, 6 sprites, brushes/fill/selection, item 351 persisted\n",
+	const auto& mm = tools.minimap();
+	if (mm.width() != 256 || mm.height() != 256) {
+		return Fail("minimap should match map size");
+	}
+	const uint32_t grass_px = mm.pixel(102, 102);
+	const uint32_t water_px = mm.pixel(100, 100);
+	const uint8_t grass_g = static_cast<uint8_t>((grass_px >> 8) & 0xFF);
+	const uint8_t water_b = static_cast<uint8_t>((water_px >> 16) & 0xFF);
+	if (grass_g < 120) {
+		return Fail("grass minimap pixel should be green");
+	}
+	if (water_b < 80) {
+		return Fail("water minimap pixel should be blue");
+	}
+
+	const auto* pz_tile = tools.map().getTile(Position(100, 100, tools.floor()));
+	if (!pz_tile || !pz_tile->hasFlag(rme::core::TILESTATE_PROTECTIONZONE)) {
+		return Fail("sample water pool should be a protection zone");
+	}
+
+	tools.setBrushKind(rme::core::BrushKind::Flags);
+	tools.setFlagMask(rme::core::TILESTATE_NOLOGOUT);
+	tools.beginStroke();
+	tools.strokeAt(Position(102, 102, tools.floor()));
+	tools.endStroke();
+	if (!tools.map().getTile(Position(102, 102, tools.floor()))->hasFlag(rme::core::TILESTATE_NOLOGOUT)) {
+		return Fail("flags brush should set no-logout");
+	}
+	tools.undo();
+	if (tools.map().getTile(Position(102, 102, tools.floor()))->hasFlag(rme::core::TILESTATE_NOLOGOUT)) {
+		return Fail("undo should clear the painted flag");
+	}
+
+	const uint32_t extra_town = tools.addTown("Harbor", Position(130, 130, tools.floor()));
+	if (tools.map().towns().size() != 2 || extra_town == 1) {
+		return Fail("addTown should append a new town id");
+	}
+	if (!tools.goToTown(extra_town) || tools.cameraX() != 130 || tools.cameraY() != 130) {
+		return Fail("goToTown should move the camera");
+	}
+	tools.panBy(-5, 2);
+	if (tools.cameraX() != 125 || tools.cameraY() != 132) {
+		return Fail("panBy should offset the camera");
+	}
+	tools.addWaypoint("lookout", Position(98, 98, tools.floor()));
+	if (tools.map().waypoints().size() != 2 || !tools.goToWaypoint(1) || tools.cameraX() != 98) {
+		return Fail("waypoint jump failed");
+	}
+	if (!tools.removeTown(extra_town) || tools.map().towns().size() != 1) {
+		return Fail("removeTown failed");
+	}
+
+	const auto flags_saved = (dir / "rme_phase5_flags.otbm").string();
+	if (!tools.saveOtbm(flags_saved)) {
+		return Fail("flag map save failed");
+	}
+	EditorSession flags_reload;
+	if (!flags_reload.loadOtbm(flags_saved)) {
+		return Fail("flag map reload failed");
+	}
+	const auto* reloaded_pz = flags_reload.map().getTile(Position(100, 100, flags_reload.floor()));
+	if (!reloaded_pz || !reloaded_pz->hasFlag(rme::core::TILESTATE_PROTECTIONZONE)) {
+		return Fail("OTBM roundtrip lost protection zone");
+	}
+
+	std::printf("rme core test ok: %zu tiles, minimap, PZ flags, towns/waypoints, brushes, item 351 persisted\n",
 		reloaded.map().tileCount());
 	return 0;
 }
