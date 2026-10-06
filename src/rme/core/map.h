@@ -64,6 +64,8 @@ public:
 	void markChanged() { changed_ = true; }
 	void clearChanges() { changed_ = false; }
 
+	bool inBounds(const Position& position) const;
+
 	Tile* getTile(const Position& position);
 	const Tile* getTile(const Position& position) const;
 	Tile& ensureTile(const Position& position);

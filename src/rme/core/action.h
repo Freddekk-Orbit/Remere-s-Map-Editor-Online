@@ -17,6 +17,9 @@ enum class ActionIdentifier {
 	Replace,
 	Load,
 	NewMap,
+	BrushStroke,
+	Fill,
+	Paste,
 };
 
 struct TileChange {
@@ -48,6 +51,7 @@ public:
 		limit_(limit) { }
 
 	void add(Action action, Map& map);
+	void record(Action action);
 	bool canUndo() const { return index_ > 0; }
 	bool canRedo() const { return index_ < actions_.size(); }
 	bool undo(Map& map);

@@ -35,6 +35,17 @@ void ActionQueue::add(Action action, Map& map) {
 	index_ = actions_.size();
 }
 
+void ActionQueue::record(Action action) {
+	if (index_ < actions_.size()) {
+		actions_.erase(actions_.begin() + static_cast<std::ptrdiff_t>(index_), actions_.end());
+	}
+	actions_.push_back(std::move(action));
+	if (actions_.size() > limit_) {
+		actions_.erase(actions_.begin());
+	}
+	index_ = actions_.size();
+}
+
 bool ActionQueue::undo(Map& map) {
 	if (!canUndo()) {
 		return false;

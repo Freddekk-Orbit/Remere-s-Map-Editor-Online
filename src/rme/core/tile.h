@@ -40,6 +40,14 @@ public:
 	const std::vector<Item>& getItems() const { return items_; }
 	std::vector<Item>& getItems() { return items_; }
 	void addItem(Item item) { items_.push_back(std::move(item)); }
+	void clearItems() { items_.clear(); }
+	bool popTopItem() {
+		if (items_.empty()) {
+			return false;
+		}
+		items_.pop_back();
+		return true;
+	}
 
 	uint32_t getFlags() const { return flags_; }
 	void setFlags(uint32_t flags) { flags_ = flags; }

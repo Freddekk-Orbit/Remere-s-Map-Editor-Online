@@ -262,8 +262,24 @@ private:
 				}
 				ImGui::EndMenu();
 			}
+			if (ImGui::BeginMenu("Edit")) {
+				if (ImGui::MenuItem("Delete selection", "Del", false, session_.selection().visible())) {
+					session_.deleteSelection();
+				}
+				if (ImGui::MenuItem("Copy", "Ctrl+C", false, session_.selection().visible())) {
+					session_.copySelection();
+				}
+				if (ImGui::MenuItem("Cut", "Ctrl+X", false, session_.selection().visible())) {
+					session_.cutSelection();
+				}
+				if (ImGui::MenuItem("Paste at camera", "Ctrl+V", false, session_.hasClipboard())) {
+					session_.pasteAt(Position(session_.cameraX(), session_.cameraY(), session_.floor()));
+				}
+				ImGui::EndMenu();
+			}
 			if (ImGui::BeginMenu("View")) {
 				ImGui::MenuItem("Map canvas", nullptr, &show_canvas_);
+				ImGui::MenuItem("Brushes", nullptr, &show_brushes_);
 				ImGui::MenuItem("Item palette", nullptr, &show_palette_);
 				ImGui::MenuItem("Map inspector", nullptr, &show_inspector_);
 				ImGui::MenuItem("Asset browser", nullptr, &show_assets_);
@@ -272,7 +288,7 @@ private:
 				ImGui::EndMenu();
 			}
 			if (ImGui::BeginMenu("Help")) {
-				ImGui::MenuItem("About Phase 3", nullptr, &show_about_);
+				ImGui::MenuItem("About Phase 4", nullptr, &show_about_);
 				ImGui::EndMenu();
 			}
 			ImGui::SameLine(ImGui::GetWindowWidth() - 220.0f);
@@ -287,12 +303,33 @@ private:
 		if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Y, false)) {
 			session_.redo();
 		}
+		if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_C, false)) {
+			session_.copySelection();
+		}
+		if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_X, false)) {
+			session_.cutSelection();
+		}
+		if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_V, false)) {
+			session_.pasteAt(Position(session_.cameraX(), session_.cameraY(), session_.floor()));
+		}
+		if (ImGui::IsKeyPressed(ImGuiKey_Delete, false)) {
+			session_.deleteSelection();
+		}
+		if (ImGui::IsKeyPressed(ImGuiKey_LeftBracket, false)) {
+			session_.setBrushSize(session_.brushSize() - 2);
+		}
+		if (ImGui::IsKeyPressed(ImGuiKey_RightBracket, false)) {
+			session_.setBrushSize(session_.brushSize() + 2);
+		}
 
 		if (show_about_) {
 			DrawAbout();
 		}
 		if (show_inspector_) {
 			DrawMapInspector();
+		}
+		if (show_brushes_) {
+			DrawBrushTools();
 		}
 		if (show_canvas_) {
 			DrawMapCanvas();
@@ -317,14 +354,14 @@ private:
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 16.0f, viewport->WorkPos.y + 28.0f), ImGuiCond_FirstUseEver);
 		ImGui::SetNextWindowSize(ImVec2(460.0f, 240.0f), ImGuiCond_FirstUseEver);
-		if (!ImGui::Begin("RME Wasm - Phase 3", nullptr, ImGuiWindowFlags_NoCollapse)) {
+		if (!ImGui::Begin("RME Wasm - Phase 4", nullptr, ImGuiWindowFlags_NoCollapse)) {
 			ImGui::End();
 			return;
 		}
 
 		ImGui::TextWrapped(
-			"Sample Tibia.dat / Tibia.spr are in /assets. Floor tiles use the GPU sprite "
-			"atlas; pick a brush from the item palette. Unknown ids still fall back to a color swatch."
+			"Brushes are live: Auto picks ground vs overlay from the item, drag-paint is one undo "
+			"step, Fill floods connected ground, and Select can copy/cut/paste. Right-click picks a tile."
 		);
 		ImGui::Separator();
 		ImGui::Text("Map: %s  %dx%d  tiles=%zu  items=%zu",
@@ -362,12 +399,12 @@ private:
 		ImGui::TextUnformatted("Remere's Map Editor - WebAssembly port");
 		ImGui::Separator();
 		ImGui::TextWrapped(
-			"Phase 3 loads classic .dat item properties and .spr frames on the CPU, packs "
-			"them into a WebGL2 atlas, and draws floors plus an item palette in ImGui."
+			"Phase 4 adds editor brushes on top of the sprite atlas: drag strokes, overlay items, "
+			"flood fill, rectangle selection, and clipboard paste. Brush logic stays in src/rme/core."
 		);
 		ImGui::Spacing();
 		ImGui::BulletText("UI: Dear ImGui (SDL2 + OpenGL ES 3.0 / WebGL2)");
-		ImGui::BulletText("Core: OTBM + DAT/SPR + tiles + undo/redo in src/rme/core");
+		ImGui::BulletText("Core: OTBM + DAT/SPR + brushes + undo/redo in src/rme/core");
 		ImGui::BulletText("GPU atlas: src/rme/gfx (GL stays out of the map core)");
 		ImGui::BulletText("wxWidgets: stubbed via src/wx_stub include path");
 		ImGui::End();
@@ -510,6 +547,12 @@ private:
 		if (const auto* brush = session_.brushType()) {
 			ImGui::Text("Brush: %u %s  sprite=%u", brush->id, brush->name.c_str(), brush->sprite_id);
 		}
+		ImGui::Text("Tool: %s -> %s  size %d  sel %zu  clip %zu",
+			rme::core::BrushKindName(session_.brushKind()),
+			rme::core::BrushKindName(session_.resolvedBrush()),
+			session_.brushSize(),
+			session_.selection().size(),
+			session_.clipboardSize());
 		if (!map.getWarnings().empty()) {
 			ImGui::Separator();
 			ImGui::Text("Warnings: %zu", map.getWarnings().size());
@@ -544,9 +587,9 @@ private:
 		}
 		if (const auto* brush_type = session_.brushType()) {
 			ImGui::SameLine();
-			ImGui::TextDisabled("%s", brush_type->name.c_str());
+			ImGui::TextDisabled("%s / %s", brush_type->name.c_str(), rme::core::BrushKindName(session_.resolvedBrush()));
 		}
-		ImGui::TextDisabled("Left-click paints ground. Shift+click erases the tile.");
+		ImGui::TextDisabled("Drag paints. Shift erases. Right-click picks. Fill / Select use the current tool.");
 
 		const int view = 16;
 		const float tile_px = 32.0f;
@@ -579,22 +622,149 @@ private:
 			}
 		}
 
-		if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+		auto tileFromMouse = [&](Position& out) -> bool {
 			const int col = static_cast<int>((mouse.x - origin.x) / tile_px);
 			const int row = static_cast<int>((mouse.y - origin.y) / tile_px);
-			if (col >= 0 && col < view && row >= 0 && row < view) {
-				const Position pos(
-					session_.cameraX() - view / 2 + col,
-					session_.cameraY() - view / 2 + row,
-					session_.floor()
-				);
-				if (ImGui::GetIO().KeyShift) {
-					session_.eraseTile(pos);
-				} else {
-					session_.paintGround(pos, session_.brushId());
+			if (col < 0 || row < 0 || col >= view || row >= view) {
+				return false;
+			}
+			out = Position(
+				session_.cameraX() - view / 2 + col,
+				session_.cameraY() - view / 2 + row,
+				session_.floor()
+			);
+			return session_.map().inBounds(out);
+		};
+
+		Position hover_pos;
+		const bool have_hover = hovered && tileFromMouse(hover_pos);
+		if (have_hover && session_.brushKind() != rme::core::BrushKind::Select && session_.brushKind() != rme::core::BrushKind::Fill) {
+			for (const Position& cell : session_.hoverFootprint(hover_pos)) {
+				const int col = cell.x - session_.cameraX() + view / 2;
+				const int row = cell.y - session_.cameraY() + view / 2;
+				if (col < 0 || row < 0 || col >= view || row >= view) {
+					continue;
 				}
+				const ImVec2 p0(origin.x + col * tile_px, origin.y + row * tile_px);
+				draw->AddRect(p0, ImVec2(p0.x + tile_px, p0.y + tile_px), IM_COL32(250, 230, 80, 160));
 			}
 		}
+
+		if (session_.selection().visible()) {
+			for (const Position& cell : session_.selection().tiles()) {
+				const int col = cell.x - session_.cameraX() + view / 2;
+				const int row = cell.y - session_.cameraY() + view / 2;
+				if (col < 0 || row < 0 || col >= view || row >= view) {
+					continue;
+				}
+				const ImVec2 p0(origin.x + col * tile_px, origin.y + row * tile_px);
+				draw->AddRectFilled(p0, ImVec2(p0.x + tile_px, p0.y + tile_px), IM_COL32(80, 160, 255, 50));
+				draw->AddRect(p0, ImVec2(p0.x + tile_px, p0.y + tile_px), IM_COL32(90, 180, 255, 220));
+			}
+		}
+
+		if (have_hover && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+			session_.pickAt(hover_pos);
+		}
+
+		const rme::core::BrushKind tool = session_.brushKind();
+		if (have_hover && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+			if (tool == rme::core::BrushKind::Select) {
+				session_.endStroke();
+				session_.selection().begin(hover_pos);
+			} else if (tool == rme::core::BrushKind::Fill) {
+				session_.fillAt(hover_pos);
+			} else {
+				const auto previous = session_.brushKind();
+				if (ImGui::GetIO().KeyShift) {
+					session_.setBrushKind(rme::core::BrushKind::Eraser);
+				}
+				session_.beginStroke();
+				session_.strokeAt(hover_pos);
+				if (ImGui::GetIO().KeyShift) {
+					session_.setBrushKind(previous);
+				}
+			}
+		} else if (session_.selection().dragging && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+			if (have_hover) {
+				session_.selection().update(hover_pos);
+			}
+		} else if (session_.isStroking() && ImGui::IsMouseDown(ImGuiMouseButton_Left) && have_hover) {
+			const auto previous = session_.brushKind();
+			if (ImGui::GetIO().KeyShift) {
+				session_.setBrushKind(rme::core::BrushKind::Eraser);
+			}
+			session_.strokeAt(hover_pos);
+			if (ImGui::GetIO().KeyShift) {
+				session_.setBrushKind(previous);
+			}
+		}
+
+		if (session_.selection().dragging && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+			session_.selection().finish();
+		}
+		if (session_.isStroking() && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+			session_.endStroke();
+		}
+		ImGui::End();
+	}
+
+	void DrawBrushTools() {
+		const ImGuiViewport* viewport = ImGui::GetMainViewport();
+		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 750.0f, viewport->WorkPos.y + 460.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(360.0f, 220.0f), ImGuiCond_FirstUseEver);
+		if (!ImGui::Begin("Brushes", &show_brushes_)) {
+			ImGui::End();
+			return;
+		}
+
+		const rme::core::BrushKind kinds[] = {
+			rme::core::BrushKind::Auto,
+			rme::core::BrushKind::Ground,
+			rme::core::BrushKind::Overlay,
+			rme::core::BrushKind::Eraser,
+			rme::core::BrushKind::Fill,
+			rme::core::BrushKind::Select,
+		};
+		for (int i = 0; i < 6; ++i) {
+			if (i > 0) {
+				ImGui::SameLine();
+			}
+			const bool selected = session_.brushKind() == kinds[i];
+			if (selected) {
+				ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.36f, 0.62f, 0.38f, 1.0f));
+			}
+			if (ImGui::Button(rme::core::BrushKindName(kinds[i]))) {
+				session_.setBrushKind(kinds[i]);
+			}
+			if (selected) {
+				ImGui::PopStyleColor();
+			}
+		}
+
+		int size = session_.brushSize();
+		if (ImGui::SliderInt("Size", &size, 1, 9)) {
+			session_.setBrushSize(size);
+		}
+		ImGui::Text("Resolved: %s", rme::core::BrushKindName(session_.resolvedBrush()));
+		ImGui::Text("Selection %zu   Clipboard %zu", session_.selection().size(), session_.clipboardSize());
+		if (ImGui::Button("Delete sel")) {
+			session_.deleteSelection();
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Copy")) {
+			session_.copySelection();
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Cut")) {
+			session_.cutSelection();
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Paste") && session_.hasClipboard()) {
+			session_.pasteAt(Position(session_.cameraX(), session_.cameraY(), session_.floor()));
+		}
+		ImGui::TextDisabled("Fill replaces 4-connected tiles with the same ground id.");
+		ImGui::TextDisabled("[ ] change size. Del deletes. Ctrl+C / X / V clipboard.");
 		ImGui::End();
 	}
 
@@ -667,12 +837,13 @@ private:
 	const char* glsl_version_ = nullptr;
 	bool running_ = true;
 	bool show_demo_ = false;
-	bool show_assets_ = true;
+	bool show_assets_ = false;
 	bool show_log_ = false;
 	bool show_about_ = false;
 	bool show_canvas_ = true;
 	bool show_inspector_ = true;
 	bool show_palette_ = true;
+	bool show_brushes_ = true;
 	ImVec4 clear_color_ = ImVec4(0.07f, 0.08f, 0.09f, 1.00f);
 	char fetch_url_[512] = "";
 	rme::core::EditorSession session_;

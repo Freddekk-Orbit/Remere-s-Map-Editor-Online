@@ -143,7 +143,111 @@ int main() {
 		return Fail("roundtrip lost town/waypoint metadata");
 	}
 
-	std::printf("rme core test ok: %zu tiles, 6 dat items, 6 sprites, item 351 persisted, undo/redo works\n",
+	EditorSession tools;
+	if (!tools.createSampleAssets(dat_path, spr_path) || !tools.createSampleMap(sample)) {
+		return Fail("brush fixture failed");
+	}
+
+	const Position overlay_pos(99, 99, tools.floor());
+	const uint16_t overlay_ground = tools.map().getTile(overlay_pos) && tools.map().getTile(overlay_pos)->getGround()
+		? tools.map().getTile(overlay_pos)->getGround()->getID()
+		: 100;
+	tools.setBrushKind(rme::core::BrushKind::Overlay);
+	tools.setBrushId(104);
+	tools.beginStroke();
+	tools.strokeAt(overlay_pos);
+	tools.endStroke();
+	const auto* overlay_tile = tools.map().getTile(overlay_pos);
+	if (!overlay_tile || !overlay_tile->getGround() || overlay_tile->getGround()->getID() != overlay_ground) {
+		return Fail("overlay brush replaced ground");
+	}
+	if (overlay_tile->getItems().size() != 1 || overlay_tile->getItems().front().getID() != 104) {
+		return Fail("overlay brush should add a flower");
+	}
+
+	tools.setBrushKind(rme::core::BrushKind::Ground);
+	tools.setBrushId(102);
+	tools.beginStroke();
+	tools.strokeAt(Position(110, 110, tools.floor()));
+	tools.strokeAt(Position(111, 110, tools.floor()));
+	tools.strokeAt(Position(112, 110, tools.floor()));
+	tools.endStroke();
+	if (tools.history().undoDepth() < 2) {
+		return Fail("drag stroke should commit as one undo step after the overlay");
+	}
+	const std::size_t before_undo = tools.map().tileCount();
+	tools.undo();
+	if (tools.map().getTile(Position(110, 110, tools.floor()))) {
+		return Fail("undo should remove the whole water stroke");
+	}
+	tools.redo();
+	if (tools.map().tileCount() != before_undo) {
+		return Fail("redo did not restore the water stroke");
+	}
+	if (!tools.map().getTile(Position(112, 110, tools.floor()))
+		|| !tools.map().getTile(Position(112, 110, tools.floor()))->hasGround()
+		|| tools.map().getTile(Position(112, 110, tools.floor()))->getGround()->getID() != 102) {
+		return Fail("stroke missed the last water tile");
+	}
+
+	tools.setBrushId(101);
+	tools.fillAt(Position(110, 110, tools.floor()));
+	if (!tools.map().getTile(Position(111, 110, tools.floor()))
+		|| tools.map().getTile(Position(111, 110, tools.floor()))->getGround()->getID() != 101) {
+		return Fail("fill should replace connected water");
+	}
+
+	tools.setBrushKind(rme::core::BrushKind::Eraser);
+	tools.beginStroke();
+	tools.strokeAt(overlay_pos);
+	tools.endStroke();
+	const auto* erased = tools.map().getTile(overlay_pos);
+	if (!erased || !erased->getItems().empty()) {
+		return Fail("eraser should pop the overlay item first");
+	}
+	if (!erased->hasGround() || erased->getGround()->getID() != overlay_ground) {
+		return Fail("first erase should keep the ground");
+	}
+
+	tools.setBrushKind(rme::core::BrushKind::Ground);
+	tools.setBrushSize(3);
+	if (tools.hoverFootprint(Position(120, 120, tools.floor())).size() != 9) {
+		return Fail("3x3 brush footprint should be 9 tiles");
+	}
+	tools.setBrushId(100);
+	tools.beginStroke();
+	tools.strokeAt(Position(120, 120, tools.floor()));
+	tools.endStroke();
+	if (!tools.map().getTile(Position(121, 121, tools.floor()))
+		|| tools.map().getTile(Position(121, 121, tools.floor()))->getGround()->getID() != 100) {
+		return Fail("3x3 ground stroke should paint the corner");
+	}
+
+	tools.selection().begin(Position(120, 120, tools.floor()));
+	tools.selection().update(Position(121, 121, tools.floor()));
+	tools.selection().finish();
+	if (tools.selection().size() != 4) {
+		return Fail("2x2 selection should contain 4 tiles");
+	}
+	tools.copySelection();
+	if (tools.clipboardSize() != 4) {
+		return Fail("copy should keep the 2x2 grass block");
+	}
+	tools.pasteAt(Position(130, 130, tools.floor()));
+	if (!tools.map().getTile(Position(131, 131, tools.floor()))
+		|| tools.map().getTile(Position(131, 131, tools.floor()))->getGround()->getID() != 100) {
+		return Fail("paste should restore the copied grass");
+	}
+	tools.deleteSelection();
+	if (tools.map().getTile(Position(120, 120, tools.floor()))) {
+		return Fail("delete selection should clear the source tiles");
+	}
+
+	if (!tools.pickAt(Position(130, 130, tools.floor())) || tools.brushId() != 100) {
+		return Fail("eyedropper should pick pasted grass");
+	}
+
+	std::printf("rme core test ok: %zu tiles, 6 dat items, 6 sprites, brushes/fill/selection, item 351 persisted\n",
 		reloaded.map().tileCount());
 	return 0;
 }

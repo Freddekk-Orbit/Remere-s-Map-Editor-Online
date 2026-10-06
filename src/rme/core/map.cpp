@@ -36,6 +36,11 @@ void Map::setSize(int width, int height) {
 	markChanged();
 }
 
+bool Map::inBounds(const Position& position) const {
+	return position.x >= 0 && position.y >= 0 && position.x < width_ && position.y < height_
+		&& position.z >= rme::MapMinLayer && position.z <= rme::MapMaxLayer;
+}
+
 Tile* Map::getTile(const Position& position) {
 	const auto it = tiles_.find(MakeTileKey(position.x, position.y, position.z));
 	return it == tiles_.end() ? nullptr : &it->second;
