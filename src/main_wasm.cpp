@@ -1003,7 +1003,6 @@ private:
 			ImGui::End();
 			return;
 		}
-		ImGui::PushItemWidth(-1.0f);
 
 		if (follow_camera_) {
 			session_.setInspect(Position(session_.cameraX(), session_.cameraY(), session_.floor()));
@@ -1024,7 +1023,6 @@ private:
 		const rme::core::Item* item = session_.inspectItem();
 		if (!item) {
 			ImGui::TextDisabled("No item on this tile.");
-			ImGui::PopItemWidth();
 			ImGui::End();
 			return;
 		}
@@ -1067,7 +1065,6 @@ private:
 			}
 		}
 		ImGui::TextDisabled("Apply is one undo step.");
-		ImGui::PopItemWidth();
 		ImGui::End();
 	}
 
@@ -1080,7 +1077,6 @@ private:
 			ImGui::End();
 			return;
 		}
-		ImGui::PushItemWidth(-1.0f);
 		ImGui::InputInt("Item id", &find_id_);
 		ImGui::InputInt("Action ID", &find_aid_);
 		ImGui::InputInt("Unique ID", &find_uid_);
@@ -1098,7 +1094,6 @@ private:
 			props_stamp_ = 0;
 		}
 		ImGui::TextDisabled("0 means ignore that field. Ctrl+F opens this window.");
-		ImGui::PopItemWidth();
 		ImGui::End();
 	}
 
