@@ -35,6 +35,8 @@ public:
 	bool saveOtbm(const std::string& path);
 	bool loadDat(const std::string& path);
 	bool loadSpr(const std::string& path);
+	bool loadHouseXml(const std::string& path);
+	bool loadSpawnXml(const std::string& path);
 	bool createSampleMap(const std::string& path);
 	bool createSampleAssets(const std::string& dat_path, const std::string& spr_path);
 
@@ -75,6 +77,9 @@ public:
 	void setBrushKind(BrushKind kind) { brush_kind_ = kind; }
 	void setFlagMask(uint32_t mask) { flag_mask_ = mask == 0 ? TILESTATE_PROTECTIONZONE : mask; }
 	uint32_t flagMask() const { return flag_mask_; }
+	void setHouseId(uint32_t id) { house_id_ = id; }
+	uint32_t houseId() const { return house_id_; }
+	void goTo(int x, int y, int z);
 	void centerOnOccupied();
 
 	uint32_t addTown(std::string name, const Position& temple);
@@ -84,6 +89,15 @@ public:
 	void addWaypoint(std::string name, const Position& position);
 	bool removeWaypoint(std::size_t index);
 	bool goToWaypoint(std::size_t index);
+
+	uint32_t addHouse(std::string name, const Position& entry);
+	bool removeHouse(uint32_t id);
+	bool renameHouse(uint32_t id, std::string name);
+	bool goToHouse(uint32_t id);
+	std::size_t addSpawn(const Position& center, int radius = 3);
+	bool removeSpawn(std::size_t index);
+	bool goToSpawn(std::size_t index);
+	bool addSpawnMonster(std::size_t spawn_index, std::string name, int dx = 0, int dy = 0, uint32_t spawntime = 60);
 
 	const ItemType* brushType() const { return items_.get(brush_id_); }
 	uint16_t spriteIdForItem(uint16_t item_id) const;
@@ -114,6 +128,7 @@ private:
 	int brush_size_ = 1;
 	BrushKind brush_kind_ = BrushKind::Auto;
 	uint32_t flag_mask_ = TILESTATE_PROTECTIONZONE;
+	uint32_t house_id_ = 1;
 	std::string last_error_;
 };
 

@@ -23,6 +23,8 @@ const char* BrushKindName(BrushKind kind) {
 			return "Select";
 		case BrushKind::Flags:
 			return "Flags";
+		case BrushKind::House:
+			return "House";
 		default:
 			return "Brush";
 	}
@@ -111,7 +113,7 @@ std::vector<Position> FloodGround(const Map& map, const Position& start) {
 	return cells;
 }
 
-bool ApplyBrushToTile(Tile& tile, BrushKind resolved, uint16_t item_id, uint32_t flag_mask, bool clear_flag) {
+bool ApplyBrushToTile(Tile& tile, BrushKind resolved, uint16_t item_id, uint32_t flag_mask, bool clear_flag, uint32_t house_id) {
 	switch (resolved) {
 		case BrushKind::Ground:
 			if (tile.hasGround() && tile.getGround()->getID() == item_id) {
@@ -139,6 +141,10 @@ bool ApplyBrushToTile(Tile& tile, BrushKind resolved, uint16_t item_id, uint32_t
 				tile.setFlags(0);
 				return true;
 			}
+			if (tile.getHouseID() != 0) {
+				tile.setHouseID(0);
+				return true;
+			}
 			return false;
 		case BrushKind::Flags: {
 			const uint32_t mask = flag_mask == 0 ? TILESTATE_PROTECTIONZONE : flag_mask;
@@ -147,6 +153,14 @@ bool ApplyBrushToTile(Tile& tile, BrushKind resolved, uint16_t item_id, uint32_t
 				return false;
 			}
 			tile.setFlags(next);
+			return true;
+		}
+		case BrushKind::House: {
+			const uint32_t next = clear_flag ? 0 : house_id;
+			if (tile.getHouseID() == next) {
+				return false;
+			}
+			tile.setHouseID(next);
 			return true;
 		}
 		default:

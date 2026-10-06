@@ -26,3 +26,4 @@ Port the C++ desktop Remere's Map Editor (https://github.com/opentibiabr/remeres
 - Prefer synthetic sample client files for tests; never vendor copyrighted Tibia assets.
 - Brush/fill/selection/clipboard stay in `src/rme/core`. Drag strokes are one undo action.
 - Minimap rebuild, towns/waypoints, and tile-flag bits stay in `src/rme/core`. ImGui only pans, zooms, and paints flags.
+- Houses/spawns stay in `src/rme/core` (OTBM house tiles + companion XML). ImGui only lists, jumps, and paints house ids.
