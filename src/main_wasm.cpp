@@ -186,6 +186,10 @@ public:
 
 	void Shutdown() {
 		atlas_.destroy();
+		if (minimap_tex_ != 0) {
+			glDeleteTextures(1, &minimap_tex_);
+			minimap_tex_ = 0;
+		}
 		ImGui_ImplOpenGL3_Shutdown();
 		ImGui_ImplSDL2_Shutdown();
 		ImGui::DestroyContext();
@@ -279,6 +283,8 @@ private:
 			}
 			if (ImGui::BeginMenu("View")) {
 				ImGui::MenuItem("Map canvas", nullptr, &show_canvas_);
+				ImGui::MenuItem("Minimap", nullptr, &show_minimap_);
+				ImGui::MenuItem("Towns / waypoints", nullptr, &show_markers_);
 				ImGui::MenuItem("Brushes", nullptr, &show_brushes_);
 				ImGui::MenuItem("Item palette", nullptr, &show_palette_);
 				ImGui::MenuItem("Map inspector", nullptr, &show_inspector_);
@@ -288,7 +294,7 @@ private:
 				ImGui::EndMenu();
 			}
 			if (ImGui::BeginMenu("Help")) {
-				ImGui::MenuItem("About Phase 4", nullptr, &show_about_);
+				ImGui::MenuItem("About Phase 5", nullptr, &show_about_);
 				ImGui::EndMenu();
 			}
 			ImGui::SameLine(ImGui::GetWindowWidth() - 220.0f);
@@ -321,12 +327,41 @@ private:
 		if (ImGui::IsKeyPressed(ImGuiKey_RightBracket, false)) {
 			session_.setBrushSize(session_.brushSize() + 2);
 		}
+		if (!io.WantTextInput) {
+			if (ImGui::IsKeyPressed(ImGuiKey_W, true) || ImGui::IsKeyPressed(ImGuiKey_UpArrow, true)) {
+				session_.panBy(0, -1);
+			}
+			if (ImGui::IsKeyPressed(ImGuiKey_S, true) && !io.KeyCtrl) {
+				session_.panBy(0, 1);
+			}
+			if (ImGui::IsKeyPressed(ImGuiKey_DownArrow, true)) {
+				session_.panBy(0, 1);
+			}
+			if (ImGui::IsKeyPressed(ImGuiKey_A, true) || ImGui::IsKeyPressed(ImGuiKey_LeftArrow, true)) {
+				session_.panBy(-1, 0);
+			}
+			if (ImGui::IsKeyPressed(ImGuiKey_D, true) || ImGui::IsKeyPressed(ImGuiKey_RightArrow, true)) {
+				session_.panBy(1, 0);
+			}
+			if (ImGui::IsKeyPressed(ImGuiKey_PageUp, false)) {
+				session_.setFloor(session_.floor() - 1);
+			}
+			if (ImGui::IsKeyPressed(ImGuiKey_PageDown, false)) {
+				session_.setFloor(session_.floor() + 1);
+			}
+		}
 
 		if (show_about_) {
 			DrawAbout();
 		}
 		if (show_inspector_) {
 			DrawMapInspector();
+		}
+		if (show_minimap_) {
+			DrawMinimap();
+		}
+		if (show_markers_) {
+			DrawMarkers();
 		}
 		if (show_brushes_) {
 			DrawBrushTools();
@@ -354,14 +389,14 @@ private:
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 16.0f, viewport->WorkPos.y + 28.0f), ImGuiCond_FirstUseEver);
 		ImGui::SetNextWindowSize(ImVec2(460.0f, 240.0f), ImGuiCond_FirstUseEver);
-		if (!ImGui::Begin("RME Wasm - Phase 4", nullptr, ImGuiWindowFlags_NoCollapse)) {
+		if (!ImGui::Begin("RME Wasm - Phase 5", nullptr, ImGuiWindowFlags_NoCollapse)) {
 			ImGui::End();
 			return;
 		}
 
 		ImGui::TextWrapped(
-			"Brushes are live: Auto picks ground vs overlay from the item, drag-paint is one undo "
-			"step, Fill floods connected ground, and Select can copy/cut/paste. Right-click picks a tile."
+			"Minimap, WASD/arrows pan, mouse-wheel zoom, and middle-drag pan. Towns and waypoints "
+			"jump the camera. The Flags brush paints protection zone / PvP bits (green overlay)."
 		);
 		ImGui::Separator();
 		ImGui::Text("Map: %s  %dx%d  tiles=%zu  items=%zu",
@@ -399,12 +434,12 @@ private:
 		ImGui::TextUnformatted("Remere's Map Editor - WebAssembly port");
 		ImGui::Separator();
 		ImGui::TextWrapped(
-			"Phase 4 adds editor brushes on top of the sprite atlas: drag strokes, overlay items, "
-			"flood fill, rectangle selection, and clipboard paste. Brush logic stays in src/rme/core."
+			"Phase 5 adds classic map-window navigation: a DAT-colored minimap, pan/zoom, "
+			"towns and waypoints, and OTBM tile flags (protection zone, no-logout, PvP)."
 		);
 		ImGui::Spacing();
 		ImGui::BulletText("UI: Dear ImGui (SDL2 + OpenGL ES 3.0 / WebGL2)");
-		ImGui::BulletText("Core: OTBM + DAT/SPR + brushes + undo/redo in src/rme/core");
+		ImGui::BulletText("Core: OTBM + DAT/SPR + brushes + minimap in src/rme/core");
 		ImGui::BulletText("GPU atlas: src/rme/gfx (GL stays out of the map core)");
 		ImGui::BulletText("wxWidgets: stubbed via src/wx_stub include path");
 		ImGui::End();
@@ -553,9 +588,204 @@ private:
 			session_.brushSize(),
 			session_.selection().size(),
 			session_.clipboardSize());
+		ImGui::Text("Camera %d,%d  floor %d  zoom %.2f", session_.cameraX(), session_.cameraY(), session_.floor(), zoom_);
 		if (!map.getWarnings().empty()) {
 			ImGui::Separator();
 			ImGui::Text("Warnings: %zu", map.getWarnings().size());
+		}
+		ImGui::End();
+	}
+
+	void SyncMinimapTexture() {
+		const rme::core::Minimap& mm = session_.minimap();
+		if (mm.empty() || mm.width() <= 0 || mm.height() <= 0) {
+			return;
+		}
+		if (minimap_tex_ == 0) {
+			glGenTextures(1, &minimap_tex_);
+		}
+		glBindTexture(GL_TEXTURE_2D, minimap_tex_);
+		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		if (minimap_tex_w_ != mm.width() || minimap_tex_h_ != mm.height()) {
+			glTexImage2D(
+				GL_TEXTURE_2D,
+				0,
+				GL_RGBA,
+				mm.width(),
+				mm.height(),
+				0,
+				GL_RGBA,
+				GL_UNSIGNED_BYTE,
+				mm.rgba().data()
+			);
+			minimap_tex_w_ = mm.width();
+			minimap_tex_h_ = mm.height();
+		} else {
+			glTexSubImage2D(
+				GL_TEXTURE_2D,
+				0,
+				0,
+				0,
+				mm.width(),
+				mm.height(),
+				GL_RGBA,
+				GL_UNSIGNED_BYTE,
+				mm.rgba().data()
+			);
+		}
+		glBindTexture(GL_TEXTURE_2D, 0);
+	}
+
+	void DrawMinimap() {
+		const ImGuiViewport* viewport = ImGui::GetMainViewport();
+		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 900.0f, viewport->WorkPos.y + 28.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(280.0f, 320.0f), ImGuiCond_FirstUseEver);
+		if (!ImGui::Begin("Minimap", &show_minimap_)) {
+			ImGui::End();
+			return;
+		}
+
+		SyncMinimapTexture();
+		const rme::core::Minimap& mm = session_.minimap();
+		if (minimap_tex_ == 0 || mm.empty()) {
+			ImGui::TextDisabled("No minimap.");
+			ImGui::End();
+			return;
+		}
+
+		const int crop = std::max(8, std::min({48, mm.width(), mm.height()}));
+		const int x0 = std::clamp(session_.cameraX() - crop / 2, 0, mm.width() - crop);
+		const int y0 = std::clamp(session_.cameraY() - crop / 2, 0, mm.height() - crop);
+		ImGui::Text("Floor %d  %dx%d  view %d,%d", mm.floor(), mm.width(), mm.height(), x0, y0);
+		ImGui::TextDisabled("Click to jump. Yellow = town, cyan = waypoint.");
+
+		const ImVec2 avail = ImGui::GetContentRegionAvail();
+		const float side = std::max(64.0f, std::min(avail.x, avail.y - 8.0f));
+		const ImVec2 image_size(side, side);
+		const ImVec2 image_min = ImGui::GetCursorScreenPos();
+		const ImTextureID tex = static_cast<ImTextureID>(static_cast<intptr_t>(minimap_tex_));
+		const ImVec2 uv0(
+			static_cast<float>(x0) / static_cast<float>(mm.width()),
+			static_cast<float>(y0) / static_cast<float>(mm.height())
+		);
+		const ImVec2 uv1(
+			static_cast<float>(x0 + crop) / static_cast<float>(mm.width()),
+			static_cast<float>(y0 + crop) / static_cast<float>(mm.height())
+		);
+		ImGui::Image(tex, image_size, uv0, uv1);
+		const bool hovered = ImGui::IsItemHovered();
+		ImDrawList* draw = ImGui::GetWindowDrawList();
+
+		auto mapToScreen = [&](int x, int y) -> ImVec2 {
+			return ImVec2(
+				image_min.x + (static_cast<float>(x - x0) + 0.5f) / static_cast<float>(crop) * image_size.x,
+				image_min.y + (static_cast<float>(y - y0) + 0.5f) / static_cast<float>(crop) * image_size.y
+			);
+		};
+		auto inCrop = [&](int x, int y) {
+			return x >= x0 && y >= y0 && x < x0 + crop && y < y0 + crop;
+		};
+
+		const float tile_w = image_size.x / static_cast<float>(crop);
+		const float tile_h = image_size.y / static_cast<float>(crop);
+		const ImVec2 cam = mapToScreen(session_.cameraX(), session_.cameraY());
+		draw->AddRect(
+			ImVec2(cam.x - 9.0f * tile_w, cam.y - 7.0f * tile_h),
+			ImVec2(cam.x + 9.0f * tile_w, cam.y + 7.0f * tile_h),
+			IM_COL32(255, 255, 255, 220)
+		);
+		draw->AddCircleFilled(cam, 3.0f, IM_COL32(255, 255, 255, 255));
+
+		for (const auto& town : session_.map().towns()) {
+			if (town.temple.z != session_.floor() || !inCrop(town.temple.x, town.temple.y)) {
+				continue;
+			}
+			const ImVec2 p = mapToScreen(town.temple.x, town.temple.y);
+			draw->AddCircleFilled(p, 5.0f, IM_COL32(250, 210, 40, 255));
+			draw->AddCircle(p, 5.0f, IM_COL32(20, 20, 20, 220));
+		}
+		for (const auto& waypoint : session_.map().waypoints()) {
+			if (waypoint.position.z != session_.floor() || !inCrop(waypoint.position.x, waypoint.position.y)) {
+				continue;
+			}
+			const ImVec2 p = mapToScreen(waypoint.position.x, waypoint.position.y);
+			draw->AddRectFilled(ImVec2(p.x - 3.5f, p.y - 3.5f), ImVec2(p.x + 3.5f, p.y + 3.5f), IM_COL32(40, 220, 230, 255));
+		}
+
+		if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+			const ImVec2 mouse = ImGui::GetIO().MousePos;
+			const int mx = x0 + static_cast<int>((mouse.x - image_min.x) / image_size.x * static_cast<float>(crop));
+			const int my = y0 + static_cast<int>((mouse.y - image_min.y) / image_size.y * static_cast<float>(crop));
+			session_.setCamera(mx, my);
+		}
+
+		ImGui::End();
+	}
+
+	void DrawMarkers() {
+		const ImGuiViewport* viewport = ImGui::GetMainViewport();
+		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 900.0f, viewport->WorkPos.y + 360.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(280.0f, 280.0f), ImGuiCond_FirstUseEver);
+		if (!ImGui::Begin("Towns / waypoints", &show_markers_)) {
+			ImGui::End();
+			return;
+		}
+
+		const Position here(session_.cameraX(), session_.cameraY(), session_.floor());
+		ImGui::Text("Camera %d, %d, %d", here.x, here.y, here.z);
+		ImGui::InputText("Town name", town_name_, sizeof(town_name_));
+		if (ImGui::Button("Add town here")) {
+			session_.addTown(town_name_, here);
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Add waypoint here")) {
+			session_.addWaypoint(waypoint_name_, here);
+		}
+		ImGui::InputText("Waypoint name", waypoint_name_, sizeof(waypoint_name_));
+
+		ImGui::Separator();
+		ImGui::TextUnformatted("Towns");
+		if (session_.map().towns().empty()) {
+			ImGui::TextDisabled("None");
+		}
+		for (const auto& town : session_.map().towns()) {
+			ImGui::PushID(static_cast<int>(town.id));
+			ImGui::Text("%s  (%d,%d,%d)", town.name.c_str(), town.temple.x, town.temple.y, town.temple.z);
+			if (ImGui::SmallButton("Go")) {
+				session_.goToTown(town.id);
+			}
+			ImGui::SameLine();
+			if (ImGui::SmallButton("Delete")) {
+				session_.removeTown(town.id);
+				ImGui::PopID();
+				break;
+			}
+			ImGui::PopID();
+		}
+
+		ImGui::Separator();
+		ImGui::TextUnformatted("Waypoints");
+		if (session_.map().waypoints().empty()) {
+			ImGui::TextDisabled("None");
+		}
+		for (std::size_t i = 0; i < session_.map().waypoints().size(); ++i) {
+			const auto& waypoint = session_.map().waypoints()[i];
+			ImGui::PushID(static_cast<int>(i) + 10000);
+			ImGui::Text("%s  (%d,%d,%d)", waypoint.name.c_str(), waypoint.position.x, waypoint.position.y, waypoint.position.z);
+			if (ImGui::SmallButton("Go")) {
+				session_.goToWaypoint(i);
+			}
+			ImGui::SameLine();
+			if (ImGui::SmallButton("Delete")) {
+				session_.removeWaypoint(i);
+				ImGui::PopID();
+				break;
+			}
+			ImGui::PopID();
 		}
 		ImGui::End();
 	}
@@ -589,20 +819,23 @@ private:
 			ImGui::SameLine();
 			ImGui::TextDisabled("%s / %s", brush_type->name.c_str(), rme::core::BrushKindName(session_.resolvedBrush()));
 		}
-		ImGui::TextDisabled("Drag paints. Shift erases. Right-click picks. Fill / Select use the current tool.");
+		ImGui::SliderFloat("Zoom", &zoom_, 0.5f, 2.5f, "%.2f");
+		ImGui::TextDisabled("LMB paints. Shift erases/clears flags. RMB picks. MMB pan. Wheel zoom. WASD pan.");
 
-		const int view = 16;
-		const float tile_px = 32.0f;
+		const float tile_px = 32.0f * zoom_;
+		const ImVec2 avail = ImGui::GetContentRegionAvail();
+		const int view_w = std::max(1, static_cast<int>(avail.x / tile_px));
+		const int view_h = std::max(1, static_cast<int>(avail.y / tile_px));
 		const ImVec2 origin = ImGui::GetCursorScreenPos();
 		ImDrawList* draw = ImGui::GetWindowDrawList();
-		ImGui::InvisibleButton("map_grid", ImVec2(view * tile_px, view * tile_px));
+		ImGui::InvisibleButton("map_grid", ImVec2(view_w * tile_px, view_h * tile_px));
 		const bool hovered = ImGui::IsItemHovered();
 		const ImVec2 mouse = ImGui::GetIO().MousePos;
 
-		for (int row = 0; row < view; ++row) {
-			for (int col = 0; col < view; ++col) {
-				const int x = session_.cameraX() - view / 2 + col;
-				const int y = session_.cameraY() - view / 2 + row;
+		for (int row = 0; row < view_h; ++row) {
+			for (int col = 0; col < view_w; ++col) {
+				const int x = session_.cameraX() - view_w / 2 + col;
+				const int y = session_.cameraY() - view_h / 2 + row;
 				const ImVec2 p0(origin.x + col * tile_px, origin.y + row * tile_px);
 				const ImVec2 p1(p0.x + tile_px, p0.y + tile_px);
 				const rme::core::Tile* tile = session_.map().getTile(Position(x, y, session_.floor()));
@@ -615,6 +848,18 @@ private:
 					for (const auto& item : tile->getItems()) {
 						DrawSprite(draw, p0, p1, session_.spriteIdForItem(item.getID()), FallbackColor(item.getID()));
 					}
+					if (tile->hasFlag(rme::core::TILESTATE_PROTECTIONZONE)) {
+						draw->AddRectFilled(p0, p1, IM_COL32(40, 200, 80, 55));
+					}
+					if (tile->hasFlag(rme::core::TILESTATE_NOLOGOUT)) {
+						draw->AddRectFilled(p0, p1, IM_COL32(200, 50, 50, 50));
+					}
+					if (tile->hasFlag(rme::core::TILESTATE_PVPZONE)) {
+						draw->AddRectFilled(p0, p1, IM_COL32(220, 140, 40, 50));
+					}
+					if (tile->hasFlag(rme::core::TILESTATE_NOPVP)) {
+						draw->AddRectFilled(p0, p1, IM_COL32(60, 90, 210, 50));
+					}
 				}
 				if (x == session_.cameraX() && y == session_.cameraY()) {
 					draw->AddRect(p0, ImVec2(p1.x - 1.0f, p1.y - 1.0f), IM_COL32(240, 240, 240, 220));
@@ -625,12 +870,12 @@ private:
 		auto tileFromMouse = [&](Position& out) -> bool {
 			const int col = static_cast<int>((mouse.x - origin.x) / tile_px);
 			const int row = static_cast<int>((mouse.y - origin.y) / tile_px);
-			if (col < 0 || row < 0 || col >= view || row >= view) {
+			if (col < 0 || row < 0 || col >= view_w || row >= view_h) {
 				return false;
 			}
 			out = Position(
-				session_.cameraX() - view / 2 + col,
-				session_.cameraY() - view / 2 + row,
+				session_.cameraX() - view_w / 2 + col,
+				session_.cameraY() - view_h / 2 + row,
 				session_.floor()
 			);
 			return session_.map().inBounds(out);
@@ -640,9 +885,9 @@ private:
 		const bool have_hover = hovered && tileFromMouse(hover_pos);
 		if (have_hover && session_.brushKind() != rme::core::BrushKind::Select && session_.brushKind() != rme::core::BrushKind::Fill) {
 			for (const Position& cell : session_.hoverFootprint(hover_pos)) {
-				const int col = cell.x - session_.cameraX() + view / 2;
-				const int row = cell.y - session_.cameraY() + view / 2;
-				if (col < 0 || row < 0 || col >= view || row >= view) {
+				const int col = cell.x - session_.cameraX() + view_w / 2;
+				const int row = cell.y - session_.cameraY() + view_h / 2;
+				if (col < 0 || row < 0 || col >= view_w || row >= view_h) {
 					continue;
 				}
 				const ImVec2 p0(origin.x + col * tile_px, origin.y + row * tile_px);
@@ -652,9 +897,9 @@ private:
 
 		if (session_.selection().visible()) {
 			for (const Position& cell : session_.selection().tiles()) {
-				const int col = cell.x - session_.cameraX() + view / 2;
-				const int row = cell.y - session_.cameraY() + view / 2;
-				if (col < 0 || row < 0 || col >= view || row >= view) {
+				const int col = cell.x - session_.cameraX() + view_w / 2;
+				const int row = cell.y - session_.cameraY() + view_h / 2;
+				if (col < 0 || row < 0 || col >= view_w || row >= view_h) {
 					continue;
 				}
 				const ImVec2 p0(origin.x + col * tile_px, origin.y + row * tile_px);
@@ -663,41 +908,48 @@ private:
 			}
 		}
 
+		if (hovered && ImGui::GetIO().MouseWheel != 0.0f) {
+			const float factor = ImGui::GetIO().MouseWheel > 0.0f ? 1.15f : (1.0f / 1.15f);
+			zoom_ = std::clamp(zoom_ * factor, 0.5f, 2.5f);
+		}
+
+		if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) {
+			panning_ = true;
+			pan_last_ = mouse;
+		}
+		if (panning_ && ImGui::IsMouseDown(ImGuiMouseButton_Middle)) {
+			const int dx = static_cast<int>((pan_last_.x - mouse.x) / tile_px);
+			const int dy = static_cast<int>((pan_last_.y - mouse.y) / tile_px);
+			if (dx != 0 || dy != 0) {
+				session_.panBy(dx, dy);
+				pan_last_ = mouse;
+			}
+		}
+		if (!ImGui::IsMouseDown(ImGuiMouseButton_Middle)) {
+			panning_ = false;
+		}
+
 		if (have_hover && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
 			session_.pickAt(hover_pos);
 		}
 
 		const rme::core::BrushKind tool = session_.brushKind();
-		if (have_hover && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+		if (!panning_ && have_hover && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
 			if (tool == rme::core::BrushKind::Select) {
 				session_.endStroke();
 				session_.selection().begin(hover_pos);
 			} else if (tool == rme::core::BrushKind::Fill) {
 				session_.fillAt(hover_pos);
 			} else {
-				const auto previous = session_.brushKind();
-				if (ImGui::GetIO().KeyShift) {
-					session_.setBrushKind(rme::core::BrushKind::Eraser);
-				}
 				session_.beginStroke();
-				session_.strokeAt(hover_pos);
-				if (ImGui::GetIO().KeyShift) {
-					session_.setBrushKind(previous);
-				}
+				session_.strokeAt(hover_pos, ImGui::GetIO().KeyShift);
 			}
 		} else if (session_.selection().dragging && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
 			if (have_hover) {
 				session_.selection().update(hover_pos);
 			}
-		} else if (session_.isStroking() && ImGui::IsMouseDown(ImGuiMouseButton_Left) && have_hover) {
-			const auto previous = session_.brushKind();
-			if (ImGui::GetIO().KeyShift) {
-				session_.setBrushKind(rme::core::BrushKind::Eraser);
-			}
-			session_.strokeAt(hover_pos);
-			if (ImGui::GetIO().KeyShift) {
-				session_.setBrushKind(previous);
-			}
+		} else if (!panning_ && session_.isStroking() && ImGui::IsMouseDown(ImGuiMouseButton_Left) && have_hover) {
+			session_.strokeAt(hover_pos, ImGui::GetIO().KeyShift);
 		}
 
 		if (session_.selection().dragging && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
@@ -712,7 +964,7 @@ private:
 	void DrawBrushTools() {
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 750.0f, viewport->WorkPos.y + 460.0f), ImGuiCond_FirstUseEver);
-		ImGui::SetNextWindowSize(ImVec2(360.0f, 220.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(360.0f, 280.0f), ImGuiCond_FirstUseEver);
 		if (!ImGui::Begin("Brushes", &show_brushes_)) {
 			ImGui::End();
 			return;
@@ -725,9 +977,12 @@ private:
 			rme::core::BrushKind::Eraser,
 			rme::core::BrushKind::Fill,
 			rme::core::BrushKind::Select,
+			rme::core::BrushKind::Flags,
 		};
-		for (int i = 0; i < 6; ++i) {
-			if (i > 0) {
+		for (int i = 0; i < 7; ++i) {
+			if (i == 4) {
+				// Second row: Fill / Select / Flags
+			} else if (i > 0) {
 				ImGui::SameLine();
 			}
 			const bool selected = session_.brushKind() == kinds[i];
@@ -746,6 +1001,24 @@ private:
 		if (ImGui::SliderInt("Size", &size, 1, 9)) {
 			session_.setBrushSize(size);
 		}
+
+		ImGui::TextUnformatted("Flag mask");
+		const uint32_t flag_choices[] = {
+			rme::core::TILESTATE_PROTECTIONZONE,
+			rme::core::TILESTATE_NOPVP,
+			rme::core::TILESTATE_NOLOGOUT,
+			rme::core::TILESTATE_PVPZONE,
+		};
+		const char* flag_labels[] = { "PZ", "NoPvP", "NoLogout", "PvP" };
+		for (int i = 0; i < 4; ++i) {
+			if (i > 0) {
+				ImGui::SameLine();
+			}
+			if (ImGui::RadioButton(flag_labels[i], session_.flagMask() == flag_choices[i])) {
+				session_.setFlagMask(flag_choices[i]);
+			}
+		}
+
 		ImGui::Text("Resolved: %s", rme::core::BrushKindName(session_.resolvedBrush()));
 		ImGui::Text("Selection %zu   Clipboard %zu", session_.selection().size(), session_.clipboardSize());
 		if (ImGui::Button("Delete sel")) {
@@ -764,6 +1037,7 @@ private:
 			session_.pasteAt(Position(session_.cameraX(), session_.cameraY(), session_.floor()));
 		}
 		ImGui::TextDisabled("Fill replaces 4-connected tiles with the same ground id.");
+		ImGui::TextDisabled("Flags paints PZ/PvP bits (green overlay). Shift+click clears.");
 		ImGui::TextDisabled("[ ] change size. Del deletes. Ctrl+C / X / V clipboard.");
 		ImGui::End();
 	}
@@ -844,6 +1118,16 @@ private:
 	bool show_inspector_ = true;
 	bool show_palette_ = true;
 	bool show_brushes_ = true;
+	bool show_minimap_ = true;
+	bool show_markers_ = true;
+	float zoom_ = 1.0f;
+	bool panning_ = false;
+	ImVec2 pan_last_{};
+	unsigned int minimap_tex_ = 0;
+	int minimap_tex_w_ = 0;
+	int minimap_tex_h_ = 0;
+	char town_name_[64] = "New town";
+	char waypoint_name_[64] = "Waypoint";
 	ImVec4 clear_color_ = ImVec4(0.07f, 0.08f, 0.09f, 1.00f);
 	char fetch_url_[512] = "";
 	rme::core::EditorSession session_;

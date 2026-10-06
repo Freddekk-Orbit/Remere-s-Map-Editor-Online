@@ -21,6 +21,8 @@ const char* BrushKindName(BrushKind kind) {
 			return "Fill";
 		case BrushKind::Select:
 			return "Select";
+		case BrushKind::Flags:
+			return "Flags";
 		default:
 			return "Brush";
 	}
@@ -109,7 +111,7 @@ std::vector<Position> FloodGround(const Map& map, const Position& start) {
 	return cells;
 }
 
-bool ApplyBrushToTile(Tile& tile, BrushKind resolved, uint16_t item_id) {
+bool ApplyBrushToTile(Tile& tile, BrushKind resolved, uint16_t item_id, uint32_t flag_mask, bool clear_flag) {
 	switch (resolved) {
 		case BrushKind::Ground:
 			if (tile.hasGround() && tile.getGround()->getID() == item_id) {
@@ -133,7 +135,20 @@ bool ApplyBrushToTile(Tile& tile, BrushKind resolved, uint16_t item_id) {
 				tile.clearGround();
 				return true;
 			}
+			if (tile.getFlags() != 0) {
+				tile.setFlags(0);
+				return true;
+			}
 			return false;
+		case BrushKind::Flags: {
+			const uint32_t mask = flag_mask == 0 ? TILESTATE_PROTECTIONZONE : flag_mask;
+			const uint32_t next = clear_flag ? (tile.getFlags() & ~mask) : (tile.getFlags() | mask);
+			if (next == tile.getFlags()) {
+				return false;
+			}
+			tile.setFlags(next);
+			return true;
+		}
 		default:
 			return false;
 	}

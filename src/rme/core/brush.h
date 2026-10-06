@@ -16,6 +16,7 @@ enum class BrushKind {
 	Eraser,
 	Fill,
 	Select,
+	Flags,
 };
 
 const char* BrushKindName(BrushKind kind);
@@ -29,7 +30,7 @@ std::vector<Position> FloodGround(const Map& map, const Position& start);
 std::vector<Position> SelectionTiles(const Position& a, const Position& b);
 
 // Mutates tile. Returns true when the tile content changed.
-bool ApplyBrushToTile(Tile& tile, BrushKind resolved, uint16_t item_id);
+bool ApplyBrushToTile(Tile& tile, BrushKind resolved, uint16_t item_id, uint32_t flag_mask = 0, bool clear_flag = false);
 
 struct Selection {
 	bool dragging = false;

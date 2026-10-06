@@ -3,6 +3,7 @@
 #include "action.h"
 #include "brush.h"
 #include "items_dat.h"
+#include "minimap.h"
 #include "otbm.h"
 #include "sprites.h"
 
@@ -27,6 +28,7 @@ public:
 	ActionQueue& history() { return history_; }
 	Selection& selection() { return selection_; }
 	const Selection& selection() const { return selection_; }
+	const Minimap& minimap();
 
 	void newMap(int width = 256, int height = 256);
 	bool loadOtbm(const std::string& path);
@@ -40,7 +42,7 @@ public:
 	void eraseTile(const Position& position);
 
 	void beginStroke();
-	void strokeAt(const Position& position);
+	void strokeAt(const Position& position, bool invert = false);
 	void endStroke();
 	bool isStroking() const { return stroking_; }
 
@@ -66,11 +68,22 @@ public:
 	BrushKind brushKind() const { return brush_kind_; }
 	BrushKind resolvedBrush() const;
 	void setCamera(int x, int y);
+	void panBy(int dx, int dy);
 	void setFloor(int floor);
 	void setBrushId(uint16_t id) { brush_id_ = id; }
 	void setBrushSize(int size);
 	void setBrushKind(BrushKind kind) { brush_kind_ = kind; }
+	void setFlagMask(uint32_t mask) { flag_mask_ = mask == 0 ? TILESTATE_PROTECTIONZONE : mask; }
+	uint32_t flagMask() const { return flag_mask_; }
 	void centerOnOccupied();
+
+	uint32_t addTown(std::string name, const Position& temple);
+	bool removeTown(uint32_t id);
+	bool renameTown(uint32_t id, std::string name);
+	bool goToTown(uint32_t id);
+	void addWaypoint(std::string name, const Position& position);
+	bool removeWaypoint(std::size_t index);
+	bool goToWaypoint(std::size_t index);
 
 	const ItemType* brushType() const { return items_.get(brush_id_); }
 	uint16_t spriteIdForItem(uint16_t item_id) const;
@@ -79,13 +92,16 @@ public:
 
 private:
 	void cancelStroke();
-	bool applyLive(const Position& position, BrushKind kind, uint16_t item_id, Action& action);
+	void markMinimapDirty() { minimap_dirty_ = true; }
+	bool applyLive(const Position& position, BrushKind kind, uint16_t item_id, Action& action, bool invert = false);
 
 	Map map_;
 	ActionQueue history_;
 	ClientAssetsInfo assets_;
 	ItemDatabase items_;
 	SpriteSheet sprites_;
+	Minimap minimap_;
+	bool minimap_dirty_ = true;
 	Selection selection_;
 	std::vector<ClipboardTile> clipboard_;
 	Action stroke_{ActionIdentifier::BrushStroke};
@@ -97,6 +113,7 @@ private:
 	uint16_t brush_id_ = 100;
 	int brush_size_ = 1;
 	BrushKind brush_kind_ = BrushKind::Auto;
+	uint32_t flag_mask_ = TILESTATE_PROTECTIONZONE;
 	std::string last_error_;
 };
 

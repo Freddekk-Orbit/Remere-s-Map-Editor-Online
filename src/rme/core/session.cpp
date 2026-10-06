@@ -15,6 +15,7 @@ void EditorSession::newMap(int width, int height) {
 	selection_.clear();
 	map_.createEmpty(width, height);
 	history_.clear();
+	markMinimapDirty();
 	last_error_.clear();
 	camera_x_ = width / 2;
 	camera_y_ = height / 2;
@@ -31,6 +32,7 @@ bool EditorSession::loadOtbm(const std::string& path) {
 	}
 	map_ = std::move(loaded);
 	history_.clear();
+	markMinimapDirty();
 	centerOnOccupied();
 	last_error_.clear();
 	return true;
@@ -162,7 +164,7 @@ void EditorSession::beginStroke() {
 	stroke_seen_.clear();
 }
 
-bool EditorSession::applyLive(const Position& position, BrushKind kind, uint16_t item_id, Action& action) {
+bool EditorSession::applyLive(const Position& position, BrushKind kind, uint16_t item_id, Action& action, bool invert) {
 	if (!map_.inBounds(position)) {
 		return false;
 	}
@@ -175,7 +177,7 @@ bool EditorSession::applyLive(const Position& position, BrushKind kind, uint16_t
 	}
 	change.after = change.before.deepCopy();
 	change.after.setPosition(position);
-	if (!ApplyBrushToTile(change.after, kind, item_id)) {
+	if (!ApplyBrushToTile(change.after, kind, item_id, flag_mask_, invert && kind == BrushKind::Flags)) {
 		return false;
 	}
 	if (change.after.empty()) {
@@ -184,14 +186,15 @@ bool EditorSession::applyLive(const Position& position, BrushKind kind, uint16_t
 		map_.setTile(change.after.deepCopy());
 	}
 	action.addChange(std::move(change));
+	markMinimapDirty();
 	return true;
 }
 
-void EditorSession::strokeAt(const Position& position) {
+void EditorSession::strokeAt(const Position& position, bool invert) {
 	if (!stroking_) {
 		beginStroke();
 	}
-	const BrushKind kind = resolvedBrush();
+	const BrushKind kind = invert && brush_kind_ != BrushKind::Flags ? BrushKind::Eraser : resolvedBrush();
 	if (kind == BrushKind::Fill || kind == BrushKind::Select) {
 		return;
 	}
@@ -201,7 +204,7 @@ void EditorSession::strokeAt(const Position& position) {
 			continue;
 		}
 		stroke_seen_.insert(key);
-		applyLive(cell, kind, brush_id_, stroke_);
+		applyLive(cell, kind, brush_id_, stroke_, invert && kind == BrushKind::Flags);
 	}
 }
 
@@ -267,6 +270,7 @@ void EditorSession::deleteSelection() {
 		action.addChange(std::move(change));
 	}
 	if (!action.changes().empty()) {
+		markMinimapDirty();
 		history_.record(std::move(action));
 	}
 }
@@ -329,18 +333,27 @@ void EditorSession::pasteAt(const Position& position) {
 		action.addChange(std::move(change));
 	}
 	if (!action.changes().empty()) {
+		markMinimapDirty();
 		history_.record(std::move(action));
 	}
 }
 
 bool EditorSession::undo() {
 	endStroke();
-	return history_.undo(map_);
+	const bool ok = history_.undo(map_);
+	if (ok) {
+		markMinimapDirty();
+	}
+	return ok;
 }
 
 bool EditorSession::redo() {
 	endStroke();
-	return history_.redo(map_);
+	const bool ok = history_.redo(map_);
+	if (ok) {
+		markMinimapDirty();
+	}
+	return ok;
 }
 
 void EditorSession::setCamera(int x, int y) {
@@ -348,8 +361,16 @@ void EditorSession::setCamera(int x, int y) {
 	camera_y_ = std::clamp(y, 0, std::max(0, map_.getHeight() - 1));
 }
 
+void EditorSession::panBy(int dx, int dy) {
+	setCamera(camera_x_ + dx, camera_y_ + dy);
+}
+
 void EditorSession::setFloor(int floor) {
-	floor_ = std::clamp(floor, rme::MapMinLayer, rme::MapMaxLayer);
+	const int next = std::clamp(floor, rme::MapMinLayer, rme::MapMaxLayer);
+	if (next != floor_) {
+		floor_ = next;
+		markMinimapDirty();
+	}
 }
 
 void EditorSession::centerOnOccupied() {
@@ -378,6 +399,91 @@ uint16_t EditorSession::spriteIdForItem(uint16_t item_id) const {
 		return type->sprite_id;
 	}
 	return 0;
+}
+
+const Minimap& EditorSession::minimap() {
+	if (minimap_dirty_ || minimap_.width() != map_.getWidth() || minimap_.height() != map_.getHeight()
+		|| minimap_.floor() != floor_) {
+		minimap_.rebuild(map_, items_, floor_);
+		minimap_dirty_ = false;
+	}
+	return minimap_;
+}
+
+uint32_t EditorSession::addTown(std::string name, const Position& temple) {
+	uint32_t id = 1;
+	for (const Town& town : map_.towns()) {
+		id = std::max(id, town.id + 1);
+	}
+	Town town;
+	town.id = id;
+	town.name = name.empty() ? ("Town " + std::to_string(id)) : std::move(name);
+	town.temple = temple;
+	map_.towns().push_back(std::move(town));
+	map_.markChanged();
+	return id;
+}
+
+bool EditorSession::removeTown(uint32_t id) {
+	auto& towns = map_.towns();
+	const auto it = std::remove_if(towns.begin(), towns.end(), [id](const Town& town) {
+		return town.id == id;
+	});
+	if (it == towns.end()) {
+		return false;
+	}
+	towns.erase(it, towns.end());
+	map_.markChanged();
+	return true;
+}
+
+bool EditorSession::renameTown(uint32_t id, std::string name) {
+	for (Town& town : map_.towns()) {
+		if (town.id == id) {
+			town.name = std::move(name);
+			map_.markChanged();
+			return true;
+		}
+	}
+	return false;
+}
+
+bool EditorSession::goToTown(uint32_t id) {
+	for (const Town& town : map_.towns()) {
+		if (town.id == id) {
+			setCamera(town.temple.x, town.temple.y);
+			setFloor(town.temple.z);
+			return true;
+		}
+	}
+	return false;
+}
+
+void EditorSession::addWaypoint(std::string name, const Position& position) {
+	Waypoint waypoint;
+	waypoint.name = name.empty() ? ("wp" + std::to_string(map_.waypoints().size() + 1)) : std::move(name);
+	waypoint.position = position;
+	map_.waypoints().push_back(std::move(waypoint));
+	map_.markChanged();
+}
+
+bool EditorSession::removeWaypoint(std::size_t index) {
+	if (index >= map_.waypoints().size()) {
+		return false;
+	}
+	map_.waypoints().erase(map_.waypoints().begin() + static_cast<std::ptrdiff_t>(index));
+	map_.markChanged();
+	return true;
+}
+
+bool EditorSession::goToWaypoint(std::size_t index) {
+	if (index >= map_.waypoints().size()) {
+		return false;
+	}
+	const Waypoint& waypoint = map_.waypoints()[index];
+	setCamera(waypoint.position.x, waypoint.position.y);
+	setFloor(waypoint.position.z);
+	return true;
 }
 
 } // namespace core
