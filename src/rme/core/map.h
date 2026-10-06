@@ -27,6 +27,27 @@ struct Waypoint {
 	Position position;
 };
 
+struct House {
+	uint32_t id = 0;
+	std::string name;
+	uint32_t town_id = 1;
+	Position entry;
+	uint32_t rent = 0;
+};
+
+struct SpawnCreature {
+	std::string name;
+	int dx = 0;
+	int dy = 0;
+	uint32_t spawntime = 60;
+};
+
+struct Spawn {
+	Position center;
+	int radius = 3;
+	std::vector<SpawnCreature> monsters;
+};
+
 inline uint64_t MakeTileKey(int x, int y, int z) {
 	return (static_cast<uint64_t>(static_cast<uint32_t>(x)) << 32)
 		| (static_cast<uint64_t>(static_cast<uint16_t>(y)) << 16)
@@ -84,6 +105,12 @@ public:
 	const std::vector<Town>& towns() const { return towns_; }
 	std::vector<Waypoint>& waypoints() { return waypoints_; }
 	const std::vector<Waypoint>& waypoints() const { return waypoints_; }
+	std::vector<House>& houses() { return houses_; }
+	const std::vector<House>& houses() const { return houses_; }
+	std::vector<Spawn>& spawns() { return spawns_; }
+	const std::vector<Spawn>& spawns() const { return spawns_; }
+
+	std::size_t houseTileCount(uint32_t house_id) const;
 
 	const std::string& getError() const { return error_; }
 	void setError(std::string error) { error_ = std::move(error); }
@@ -108,6 +135,8 @@ private:
 	std::unordered_map<uint64_t, Tile> tiles_;
 	std::vector<Town> towns_;
 	std::vector<Waypoint> waypoints_;
+	std::vector<House> houses_;
+	std::vector<Spawn> spawns_;
 	bool changed_ = false;
 	std::string error_;
 	std::vector<std::string> warnings_;

@@ -40,3 +40,8 @@ Port the C++ desktop Remere's Map Editor (https://github.com/opentibiabr/remeres
 - Minimap pixels come from DAT `minimap_color` (classic 6x6x6 palette). Keep GL upload in `main_wasm`, not in `src/rme/core`.
 - Towns/waypoints and OTBM tile flags (PZ / NoPvP / NoLogout / PvP) belong on the map core. Camera pan/zoom is UI state except `EditorSession::panBy`.
 - Flags brush uses `setFlagMask`; Shift+click clears the selected bits. Town/waypoint edits do not go through undo.
+
+## Phase 6 Conventions
+- House tiles live on the OTBM (`HOUSETILE` + house id). House/spawn *lists* are classic XML beside the map (`houses.xml`, `spawn.xml`).
+- House brush is undoable tile mutation. Adding/removing house or spawn records does not go through undo.
+- Floor-below is UI-only: draw `z+1` dimmed, then the current floor. Do not store that in the map core.

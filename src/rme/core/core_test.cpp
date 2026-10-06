@@ -89,8 +89,8 @@ int main() {
 		std::fprintf(stderr, "createSampleMap failed: %s\n", session.lastError().c_str());
 		return 1;
 	}
-	if (session.map().tileCount() != 25) {
-		std::fprintf(stderr, "expected 25 sample tiles, got %zu\n", session.map().tileCount());
+	if (session.map().tileCount() != 34) {
+		std::fprintf(stderr, "expected 34 sample tiles, got %zu\n", session.map().tileCount());
 		return 1;
 	}
 	const auto* center = session.map().getTile(Position(100, 100, session.floor()));
@@ -314,7 +314,76 @@ int main() {
 		return Fail("OTBM roundtrip lost protection zone");
 	}
 
-	std::printf("rme core test ok: %zu tiles, minimap, PZ flags, towns/waypoints, brushes, item 351 persisted\n",
+	if (session.map().houses().size() != 1 || session.map().houses()[0].name != "Sample Cabin") {
+		return Fail("sample map should load house XML");
+	}
+	const auto* house_tile = session.map().getTile(Position(102, 102, session.floor()));
+	if (!house_tile || house_tile->getHouseID() != 1) {
+		return Fail("east column should be house 1");
+	}
+	if (session.map().spawns().size() != 1 || session.map().spawns()[0].monsters.size() != 2) {
+		return Fail("sample map should load spawn XML with two creatures");
+	}
+	const auto* cave = session.map().getTile(Position(100, 100, rme::MapGroundLayer + 1));
+	if (!cave || !cave->hasGround() || cave->getGround()->getID() != 101) {
+		return Fail("sample cave should exist on floor 8");
+	}
+
+	tools.setBrushKind(rme::core::BrushKind::House);
+	tools.setHouseId(1);
+	tools.beginStroke();
+	tools.strokeAt(Position(101, 102, tools.floor()));
+	tools.endStroke();
+	if (!tools.map().getTile(Position(101, 102, tools.floor()))
+		|| tools.map().getTile(Position(101, 102, tools.floor()))->getHouseID() != 1) {
+		return Fail("house brush should assign house id");
+	}
+	tools.undo();
+	if (tools.map().getTile(Position(101, 102, tools.floor()))
+		&& tools.map().getTile(Position(101, 102, tools.floor()))->getHouseID() == 1) {
+		return Fail("undo should clear painted house id");
+	}
+
+	const uint32_t extra_house = tools.addHouse("Annex", Position(98, 102, tools.floor()));
+	if (tools.map().houses().size() != 2 || extra_house == 1) {
+		return Fail("addHouse should append a new house");
+	}
+	if (!tools.goToHouse(extra_house) || tools.cameraX() != 98 || tools.cameraY() != 102) {
+		return Fail("goToHouse should move the camera");
+	}
+	tools.goTo(100, 100, 8);
+	if (tools.floor() != 8 || tools.cameraX() != 100) {
+		return Fail("goTo should set camera and floor");
+	}
+	const std::size_t spawn_index = tools.addSpawn(Position(110, 110, 7), 4);
+	if (tools.map().spawns().size() != 2 || !tools.goToSpawn(spawn_index) || tools.cameraX() != 110) {
+		return Fail("addSpawn / goToSpawn failed");
+	}
+	if (!tools.addSpawnMonster(spawn_index, "Wolf", 2, 0, 120)
+		|| tools.map().spawns()[spawn_index].monsters.size() != 2) {
+		return Fail("addSpawnMonster failed");
+	}
+
+	const auto xml_saved = (dir / "rme_phase6_map.otbm").string();
+	if (!session.saveOtbm(xml_saved)) {
+		return Fail("phase 6 map save failed");
+	}
+	EditorSession xml_reload;
+	if (!xml_reload.loadOtbm(xml_saved)) {
+		return Fail("phase 6 map reload failed");
+	}
+	if (xml_reload.map().houses().empty() || xml_reload.map().houses()[0].name != "Sample Cabin") {
+		return Fail("house XML roundtrip lost the cabin");
+	}
+	if (xml_reload.map().spawns().empty() || xml_reload.map().spawns()[0].monsters.size() != 2) {
+		return Fail("spawn XML roundtrip lost creatures");
+	}
+	if (!xml_reload.map().getTile(Position(102, 99, rme::MapGroundLayer))
+		|| xml_reload.map().getTile(Position(102, 99, rme::MapGroundLayer))->getHouseID() != 1) {
+		return Fail("house tile OTBM roundtrip failed");
+	}
+
+	std::printf("rme core test ok: %zu tiles, houses/spawns, cave, minimap, brushes, item 351 persisted\n",
 		reloaded.map().tileCount());
 	return 0;
 }

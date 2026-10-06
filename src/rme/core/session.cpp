@@ -1,4 +1,5 @@
 #include "session.h"
+#include "map_xml.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -34,13 +35,30 @@ bool EditorSession::loadOtbm(const std::string& path) {
 	history_.clear();
 	markMinimapDirty();
 	centerOnOccupied();
+	LoadHouseXml(map_, CompanionPath(path, map_.getHouseFilename(), "houses.xml"));
+	LoadSpawnXml(map_, CompanionPath(path, map_.getSpawnFilename(), "spawn.xml"));
+	if (!map_.houses().empty()) {
+		house_id_ = map_.houses().front().id;
+	}
 	last_error_.clear();
 	return true;
 }
 
 bool EditorSession::saveOtbm(const std::string& path) {
+	if (map_.getHouseFilename().empty()) {
+		map_.setHouseFilename("houses.xml");
+	}
+	if (map_.getSpawnFilename().empty()) {
+		map_.setSpawnFilename("spawn.xml");
+	}
 	if (!SaveOTBM(map_, path)) {
 		last_error_ = "Failed to write " + path;
+		return false;
+	}
+	const std::string houses = CompanionPath(path, map_.getHouseFilename(), "houses.xml");
+	const std::string spawns = CompanionPath(path, map_.getSpawnFilename(), "spawn.xml");
+	if (!SaveHouseXml(map_, houses) || !SaveSpawnXml(map_, spawns)) {
+		last_error_ = "Wrote OTBM but failed to write house/spawn XML";
 		return false;
 	}
 	map_.setName(std::filesystem::path(path).filename().string());
@@ -73,6 +91,27 @@ bool EditorSession::loadSpr(const std::string& path) {
 	assets_.sprite_count = count;
 	assets_.spr_path = path;
 	assets_.error.clear();
+	last_error_.clear();
+	return true;
+}
+
+bool EditorSession::loadHouseXml(const std::string& path) {
+	if (!LoadHouseXml(map_, path)) {
+		last_error_ = "Failed to read " + path;
+		return false;
+	}
+	if (!map_.houses().empty()) {
+		house_id_ = map_.houses().front().id;
+	}
+	last_error_.clear();
+	return true;
+}
+
+bool EditorSession::loadSpawnXml(const std::string& path) {
+	if (!LoadSpawnXml(map_, path)) {
+		last_error_ = "Failed to read " + path;
+		return false;
+	}
 	last_error_.clear();
 	return true;
 }
@@ -177,7 +216,7 @@ bool EditorSession::applyLive(const Position& position, BrushKind kind, uint16_t
 	}
 	change.after = change.before.deepCopy();
 	change.after.setPosition(position);
-	if (!ApplyBrushToTile(change.after, kind, item_id, flag_mask_, invert && kind == BrushKind::Flags)) {
+	if (!ApplyBrushToTile(change.after, kind, item_id, flag_mask_, invert && (kind == BrushKind::Flags || kind == BrushKind::House), house_id_)) {
 		return false;
 	}
 	if (change.after.empty()) {
@@ -194,9 +233,14 @@ void EditorSession::strokeAt(const Position& position, bool invert) {
 	if (!stroking_) {
 		beginStroke();
 	}
-	const BrushKind kind = invert && brush_kind_ != BrushKind::Flags ? BrushKind::Eraser : resolvedBrush();
+	const BrushKind kind = invert && brush_kind_ != BrushKind::Flags && brush_kind_ != BrushKind::House
+		? BrushKind::Eraser
+		: resolvedBrush();
 	if (kind == BrushKind::Fill || kind == BrushKind::Select) {
 		return;
+	}
+	if (kind == BrushKind::House && house_id_ == 0) {
+		house_id_ = addHouse("House", position);
 	}
 	for (const Position& cell : BrushFootprint(position, brush_size_, map_.getWidth(), map_.getHeight())) {
 		const uint64_t key = MakeTileKey(cell.x, cell.y, cell.z);
@@ -204,7 +248,7 @@ void EditorSession::strokeAt(const Position& position, bool invert) {
 			continue;
 		}
 		stroke_seen_.insert(key);
-		applyLive(cell, kind, brush_id_, stroke_, invert && kind == BrushKind::Flags);
+		applyLive(cell, kind, brush_id_, stroke_, invert && (kind == BrushKind::Flags || kind == BrushKind::House));
 	}
 }
 
@@ -365,6 +409,11 @@ void EditorSession::panBy(int dx, int dy) {
 	setCamera(camera_x_ + dx, camera_y_ + dy);
 }
 
+void EditorSession::goTo(int x, int y, int z) {
+	setFloor(z);
+	setCamera(x, y);
+}
+
 void EditorSession::setFloor(int floor) {
 	const int next = std::clamp(floor, rme::MapMinLayer, rme::MapMaxLayer);
 	if (next != floor_) {
@@ -378,14 +427,34 @@ void EditorSession::centerOnOccupied() {
 		setCamera(map_.getWidth() / 2, map_.getHeight() / 2);
 		return;
 	}
+
+	int floor_counts[rme::MapLayers] = {};
+	for (const auto& [_, tile] : map_.tiles()) {
+		const int z = tile.getPosition().z;
+		if (z >= rme::MapMinLayer && z <= rme::MapMaxLayer) {
+			++floor_counts[z];
+		}
+	}
+	int preferred_floor = rme::MapGroundLayer;
+	if (floor_counts[rme::MapGroundLayer] == 0) {
+		int best = 0;
+		for (int z = rme::MapMinLayer; z <= rme::MapMaxLayer; ++z) {
+			if (floor_counts[z] > best) {
+				best = floor_counts[z];
+				preferred_floor = z;
+			}
+		}
+	}
+
 	long long sx = 0;
 	long long sy = 0;
 	int count = 0;
-	int preferred_floor = floor_;
 	for (const auto& [_, tile] : map_.tiles()) {
+		if (tile.getPosition().z != preferred_floor) {
+			continue;
+		}
 		sx += tile.getPosition().x;
 		sy += tile.getPosition().y;
-		preferred_floor = tile.getPosition().z;
 		++count;
 	}
 	if (count > 0) {
@@ -483,6 +552,105 @@ bool EditorSession::goToWaypoint(std::size_t index) {
 	const Waypoint& waypoint = map_.waypoints()[index];
 	setCamera(waypoint.position.x, waypoint.position.y);
 	setFloor(waypoint.position.z);
+	return true;
+}
+
+uint32_t EditorSession::addHouse(std::string name, const Position& entry) {
+	uint32_t id = 1;
+	for (const House& house : map_.houses()) {
+		id = std::max(id, house.id + 1);
+	}
+	House house;
+	house.id = id;
+	house.name = name.empty() ? ("House " + std::to_string(id)) : std::move(name);
+	house.entry = entry;
+	if (!map_.towns().empty()) {
+		house.town_id = map_.towns().front().id;
+	}
+	map_.houses().push_back(std::move(house));
+	house_id_ = id;
+	map_.markChanged();
+	return id;
+}
+
+bool EditorSession::removeHouse(uint32_t id) {
+	auto& houses = map_.houses();
+	const auto it = std::remove_if(houses.begin(), houses.end(), [id](const House& house) {
+		return house.id == id;
+	});
+	if (it == houses.end()) {
+		return false;
+	}
+	houses.erase(it, houses.end());
+	if (house_id_ == id) {
+		house_id_ = houses.empty() ? 0 : houses.front().id;
+	}
+	map_.markChanged();
+	return true;
+}
+
+bool EditorSession::renameHouse(uint32_t id, std::string name) {
+	for (House& house : map_.houses()) {
+		if (house.id == id) {
+			house.name = std::move(name);
+			map_.markChanged();
+			return true;
+		}
+	}
+	return false;
+}
+
+bool EditorSession::goToHouse(uint32_t id) {
+	for (const House& house : map_.houses()) {
+		if (house.id == id) {
+			goTo(house.entry.x, house.entry.y, house.entry.z);
+			return true;
+		}
+	}
+	return false;
+}
+
+std::size_t EditorSession::addSpawn(const Position& center, int radius) {
+	Spawn spawn;
+	spawn.center = center;
+	spawn.radius = std::clamp(radius, 1, 16);
+	SpawnCreature rat;
+	rat.name = "Rat";
+	spawn.monsters.push_back(std::move(rat));
+	map_.spawns().push_back(std::move(spawn));
+	map_.markChanged();
+	return map_.spawns().size() - 1;
+}
+
+bool EditorSession::removeSpawn(std::size_t index) {
+	if (index >= map_.spawns().size()) {
+		return false;
+	}
+	map_.spawns().erase(map_.spawns().begin() + static_cast<std::ptrdiff_t>(index));
+	map_.markChanged();
+	return true;
+}
+
+bool EditorSession::goToSpawn(std::size_t index) {
+	if (index >= map_.spawns().size()) {
+		return false;
+	}
+	const Spawn& spawn = map_.spawns()[index];
+	goTo(spawn.center.x, spawn.center.y, spawn.center.z);
+	return true;
+}
+
+bool EditorSession::addSpawnMonster(std::size_t spawn_index, std::string name, int dx, int dy, uint32_t spawntime) {
+	if (spawn_index >= map_.spawns().size()) {
+		return false;
+	}
+	SpawnCreature creature;
+	creature.name = name.empty() ? "Monster" : std::move(name);
+	creature.dx = dx;
+	creature.dy = dy;
+	creature.spawntime = std::max(1u, spawntime);
+	map_.spawns()[spawn_index].monsters.push_back(std::move(creature));
+	map_.markChanged();
 	return true;
 }
 

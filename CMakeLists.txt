@@ -27,6 +27,7 @@ set(RME_CORE_SOURCES
   src/rme/core/sprites.cpp
   src/rme/core/brush.cpp
   src/rme/core/minimap.cpp
+  src/rme/core/map_xml.cpp
   src/rme/core/session.cpp
 )
 

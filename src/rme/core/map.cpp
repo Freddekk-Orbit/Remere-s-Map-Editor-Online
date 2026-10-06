@@ -13,6 +13,8 @@ void Map::clear() {
 	tiles_.clear();
 	towns_.clear();
 	waypoints_.clear();
+	houses_.clear();
+	spawns_.clear();
 	clearMessages();
 	changed_ = false;
 }
@@ -111,6 +113,16 @@ std::vector<Position> Map::occupiedPositions() const {
 		positions.push_back(tile.getPosition());
 	}
 	return positions;
+}
+
+std::size_t Map::houseTileCount(uint32_t house_id) const {
+	std::size_t count = 0;
+	for (const auto& [_, tile] : tiles_) {
+		if (tile.getHouseID() == house_id) {
+			++count;
+		}
+	}
+	return count;
 }
 
 } // namespace core

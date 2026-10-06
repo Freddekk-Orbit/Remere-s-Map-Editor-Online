@@ -285,6 +285,10 @@ private:
 				ImGui::MenuItem("Map canvas", nullptr, &show_canvas_);
 				ImGui::MenuItem("Minimap", nullptr, &show_minimap_);
 				ImGui::MenuItem("Towns / waypoints", nullptr, &show_markers_);
+				ImGui::MenuItem("Houses", nullptr, &show_houses_);
+				ImGui::MenuItem("Spawns", nullptr, &show_spawns_);
+				ImGui::MenuItem("Go to position", "Ctrl+G", &show_goto_);
+				ImGui::MenuItem("Floor below", nullptr, &show_floor_below_);
 				ImGui::MenuItem("Brushes", nullptr, &show_brushes_);
 				ImGui::MenuItem("Item palette", nullptr, &show_palette_);
 				ImGui::MenuItem("Map inspector", nullptr, &show_inspector_);
@@ -294,7 +298,7 @@ private:
 				ImGui::EndMenu();
 			}
 			if (ImGui::BeginMenu("Help")) {
-				ImGui::MenuItem("About Phase 5", nullptr, &show_about_);
+				ImGui::MenuItem("About Phase 6", nullptr, &show_about_);
 				ImGui::EndMenu();
 			}
 			ImGui::SameLine(ImGui::GetWindowWidth() - 220.0f);
@@ -317,6 +321,12 @@ private:
 		}
 		if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_V, false)) {
 			session_.pasteAt(Position(session_.cameraX(), session_.cameraY(), session_.floor()));
+		}
+		if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_G, false)) {
+			show_goto_ = true;
+			goto_x_ = session_.cameraX();
+			goto_y_ = session_.cameraY();
+			goto_z_ = session_.floor();
 		}
 		if (ImGui::IsKeyPressed(ImGuiKey_Delete, false)) {
 			session_.deleteSelection();
@@ -363,6 +373,15 @@ private:
 		if (show_markers_) {
 			DrawMarkers();
 		}
+		if (show_houses_) {
+			DrawHouses();
+		}
+		if (show_spawns_) {
+			DrawSpawns();
+		}
+		if (show_goto_) {
+			DrawGoto();
+		}
 		if (show_brushes_) {
 			DrawBrushTools();
 		}
@@ -389,14 +408,14 @@ private:
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 16.0f, viewport->WorkPos.y + 28.0f), ImGuiCond_FirstUseEver);
 		ImGui::SetNextWindowSize(ImVec2(460.0f, 240.0f), ImGuiCond_FirstUseEver);
-		if (!ImGui::Begin("RME Wasm - Phase 5", nullptr, ImGuiWindowFlags_NoCollapse)) {
+		if (!ImGui::Begin("RME Wasm - Phase 6", nullptr, ImGuiWindowFlags_NoCollapse)) {
 			ImGui::End();
 			return;
 		}
 
 		ImGui::TextWrapped(
-			"Minimap, WASD/arrows pan, mouse-wheel zoom, and middle-drag pan. Towns and waypoints "
-			"jump the camera. The Flags brush paints protection zone / PvP bits (green overlay)."
+			"Houses (magenta tiles), monster spawns (yellow circles), and a dim floor below. "
+			"House brush assigns house ids. Ctrl+G jumps to a position. PageDown enters the sample cave."
 		);
 		ImGui::Separator();
 		ImGui::Text("Map: %s  %dx%d  tiles=%zu  items=%zu",
@@ -434,8 +453,8 @@ private:
 		ImGui::TextUnformatted("Remere's Map Editor - WebAssembly port");
 		ImGui::Separator();
 		ImGui::TextWrapped(
-			"Phase 5 adds classic map-window navigation: a DAT-colored minimap, pan/zoom, "
-			"towns and waypoints, and OTBM tile flags (protection zone, no-logout, PvP)."
+			"Phase 6 adds houses and monster spawns (classic XML next to the OTBM), a House brush, "
+			"stacked floor-below drawing, and Ctrl+G to jump to a position."
 		);
 		ImGui::Spacing();
 		ImGui::BulletText("UI: Dear ImGui (SDL2 + OpenGL ES 3.0 / WebGL2)");
@@ -528,6 +547,13 @@ private:
 				session_.loadSpr(file.vfs_path);
 				ReloadAtlas();
 				break;
+			case rme::wasm::AssetKind::Xml:
+				if (file.name.find("spawn") != std::string::npos) {
+					session_.loadSpawnXml(file.vfs_path);
+				} else {
+					session_.loadHouseXml(file.vfs_path);
+				}
+				break;
 			default:
 				break;
 		}
@@ -541,13 +567,14 @@ private:
 		return static_cast<ImTextureID>(static_cast<intptr_t>(atlas_.texture()));
 	}
 
-	void DrawSprite(ImDrawList* draw, const ImVec2& p0, const ImVec2& p1, uint16_t sprite_id, ImU32 fallback) const {
+	void DrawSprite(ImDrawList* draw, const ImVec2& p0, const ImVec2& p1, uint16_t sprite_id, ImU32 fallback, ImU32 tint = IM_COL32_WHITE) const {
 		if (atlas_.valid() && atlas_.has(sprite_id)) {
 			const auto uv = atlas_.uv(sprite_id);
-			draw->AddImage(AtlasTexture(), p0, p1, ImVec2(uv.u0, uv.v0), ImVec2(uv.u1, uv.v1));
+			draw->AddImage(AtlasTexture(), p0, p1, ImVec2(uv.u0, uv.v0), ImVec2(uv.u1, uv.v1), tint);
 			return;
 		}
-		draw->AddRectFilled(p0, p1, fallback);
+		const ImU32 alpha = (tint >> IM_COL32_A_SHIFT) & 0xFF;
+		draw->AddRectFilled(p0, p1, (fallback & ~IM_COL32_A_MASK) | (alpha << IM_COL32_A_SHIFT));
 	}
 
 	static ImU32 FallbackColor(uint16_t id) {
@@ -570,7 +597,8 @@ private:
 		ImGui::Text("OTBM v%u  items %u.%u", map.getVersion().otbm, map.getVersion().items_major, map.getVersion().items_minor);
 		ImGui::Text("Tiles: %zu   Items: %zu   Floor %d: %zu",
 			map.tileCount(), map.itemCount(), session_.floor(), map.countTilesOnFloor(session_.floor()));
-		ImGui::Text("Towns: %zu   Waypoints: %zu", map.towns().size(), map.waypoints().size());
+		ImGui::Text("Towns: %zu   Waypoints: %zu   Houses: %zu   Spawns: %zu",
+			map.towns().size(), map.waypoints().size(), map.houses().size(), map.spawns().size());
 		ImGui::Text("Undo stack: %zu / %zu", session_.history().undoDepth(), session_.history().size());
 		const auto& assets = session_.assets();
 		ImGui::Separator();
@@ -589,6 +617,7 @@ private:
 			session_.selection().size(),
 			session_.clipboardSize());
 		ImGui::Text("Camera %d,%d  floor %d  zoom %.2f", session_.cameraX(), session_.cameraY(), session_.floor(), zoom_);
+		ImGui::Text("House id %u", session_.houseId());
 		if (!map.getWarnings().empty()) {
 			ImGui::Separator();
 			ImGui::Text("Warnings: %zu", map.getWarnings().size());
@@ -790,6 +819,125 @@ private:
 		ImGui::End();
 	}
 
+	void DrawHouses() {
+		const ImGuiViewport* viewport = ImGui::GetMainViewport();
+		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 610.0f, viewport->WorkPos.y + 28.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(280.0f, 260.0f), ImGuiCond_FirstUseEver);
+		if (!ImGui::Begin("Houses", &show_houses_)) {
+			ImGui::End();
+			return;
+		}
+
+		const Position here(session_.cameraX(), session_.cameraY(), session_.floor());
+		ImGui::InputText("Name", house_name_, sizeof(house_name_));
+		if (ImGui::Button("Add house here")) {
+			session_.addHouse(house_name_, here);
+		}
+		ImGui::Text("Active house id %u", session_.houseId());
+		ImGui::Separator();
+		if (session_.map().houses().empty()) {
+			ImGui::TextDisabled("None");
+		}
+		for (const auto& house : session_.map().houses()) {
+			ImGui::PushID(static_cast<int>(house.id));
+			const bool selected = session_.houseId() == house.id;
+			if (selected) {
+				ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.85f, 0.55f, 1.0f, 1.0f));
+			}
+			ImGui::Text("%s  id %u  %zu tiles", house.name.c_str(), house.id, session_.map().houseTileCount(house.id));
+			if (selected) {
+				ImGui::PopStyleColor();
+			}
+			ImGui::TextDisabled("entry %d,%d,%d", house.entry.x, house.entry.y, house.entry.z);
+			if (ImGui::SmallButton("Use")) {
+				session_.setHouseId(house.id);
+				session_.setBrushKind(rme::core::BrushKind::House);
+			}
+			ImGui::SameLine();
+			if (ImGui::SmallButton("Go")) {
+				session_.goToHouse(house.id);
+			}
+			ImGui::SameLine();
+			if (ImGui::SmallButton("Delete")) {
+				session_.removeHouse(house.id);
+				ImGui::PopID();
+				break;
+			}
+			ImGui::PopID();
+		}
+		ImGui::TextDisabled("House brush paints magenta tiles. Shift+click clears.");
+		ImGui::End();
+	}
+
+	void DrawSpawns() {
+		const ImGuiViewport* viewport = ImGui::GetMainViewport();
+		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 610.0f, viewport->WorkPos.y + 300.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(280.0f, 280.0f), ImGuiCond_FirstUseEver);
+		if (!ImGui::Begin("Spawns", &show_spawns_)) {
+			ImGui::End();
+			return;
+		}
+
+		const Position here(session_.cameraX(), session_.cameraY(), session_.floor());
+		ImGui::SliderInt("Radius", &spawn_radius_, 1, 16);
+		ImGui::InputText("Monster", monster_name_, sizeof(monster_name_));
+		if (ImGui::Button("Add spawn here")) {
+			session_.addSpawn(here, spawn_radius_);
+		}
+		ImGui::Separator();
+		if (session_.map().spawns().empty()) {
+			ImGui::TextDisabled("None");
+		}
+		for (std::size_t i = 0; i < session_.map().spawns().size(); ++i) {
+			const auto& spawn = session_.map().spawns()[i];
+			ImGui::PushID(static_cast<int>(i) + 20000);
+			ImGui::Text("(%d,%d,%d) r=%d  %zu mobs",
+				spawn.center.x, spawn.center.y, spawn.center.z, spawn.radius, spawn.monsters.size());
+			if (ImGui::SmallButton("Go")) {
+				session_.goToSpawn(i);
+			}
+			ImGui::SameLine();
+			if (ImGui::SmallButton("Add mob")) {
+				session_.addSpawnMonster(i, monster_name_);
+			}
+			ImGui::SameLine();
+			if (ImGui::SmallButton("Delete")) {
+				session_.removeSpawn(i);
+				ImGui::PopID();
+				break;
+			}
+			for (const auto& creature : spawn.monsters) {
+				ImGui::BulletText("%s %+d,%+d t=%u", creature.name.c_str(), creature.dx, creature.dy, creature.spawntime);
+			}
+			ImGui::PopID();
+		}
+		ImGui::TextDisabled("Yellow circle is the spawn radius. Red dots are monsters.");
+		ImGui::End();
+	}
+
+	void DrawGoto() {
+		const ImGuiViewport* viewport = ImGui::GetMainViewport();
+		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 400.0f, viewport->WorkPos.y + 120.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(260.0f, 160.0f), ImGuiCond_FirstUseEver);
+		if (!ImGui::Begin("Go to position", &show_goto_)) {
+			ImGui::End();
+			return;
+		}
+		ImGui::InputInt("X", &goto_x_);
+		ImGui::InputInt("Y", &goto_y_);
+		ImGui::InputInt("Z", &goto_z_);
+		if (ImGui::Button("Go")) {
+			session_.goTo(goto_x_, goto_y_, goto_z_);
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Use camera")) {
+			goto_x_ = session_.cameraX();
+			goto_y_ = session_.cameraY();
+			goto_z_ = session_.floor();
+		}
+		ImGui::End();
+	}
+
 	void DrawMapCanvas() {
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 16.0f, viewport->WorkPos.y + 280.0f), ImGuiCond_FirstUseEver);
@@ -820,7 +968,8 @@ private:
 			ImGui::TextDisabled("%s / %s", brush_type->name.c_str(), rme::core::BrushKindName(session_.resolvedBrush()));
 		}
 		ImGui::SliderFloat("Zoom", &zoom_, 0.5f, 2.5f, "%.2f");
-		ImGui::TextDisabled("LMB paints. Shift erases/clears flags. RMB picks. MMB pan. Wheel zoom. WASD pan.");
+		ImGui::Checkbox("Floor below", &show_floor_below_);
+		ImGui::TextDisabled("LMB paints. Shift erases/clears flags or house. RMB picks. MMB pan. Wheel zoom. WASD pan. Ctrl+G goto.");
 
 		const float tile_px = 32.0f * zoom_;
 		const ImVec2 avail = ImGui::GetContentRegionAvail();
@@ -838,15 +987,22 @@ private:
 				const int y = session_.cameraY() - view_h / 2 + row;
 				const ImVec2 p0(origin.x + col * tile_px, origin.y + row * tile_px);
 				const ImVec2 p1(p0.x + tile_px, p0.y + tile_px);
-				const rme::core::Tile* tile = session_.map().getTile(Position(x, y, session_.floor()));
 				draw->AddRectFilled(p0, p1, IM_COL32(20, 22, 26, 255));
-				if (tile && tile->getGround()) {
-					const uint16_t id = tile->getGround()->getID();
-					DrawSprite(draw, p0, p1, session_.spriteIdForItem(id), FallbackColor(id));
-				}
-				if (tile) {
+
+				auto paintTile = [&](int z, ImU32 tint, bool overlays) {
+					const rme::core::Tile* tile = session_.map().getTile(Position(x, y, z));
+					if (!tile) {
+						return;
+					}
+					if (tile->getGround()) {
+						const uint16_t id = tile->getGround()->getID();
+						DrawSprite(draw, p0, p1, session_.spriteIdForItem(id), FallbackColor(id), tint);
+					}
 					for (const auto& item : tile->getItems()) {
-						DrawSprite(draw, p0, p1, session_.spriteIdForItem(item.getID()), FallbackColor(item.getID()));
+						DrawSprite(draw, p0, p1, session_.spriteIdForItem(item.getID()), FallbackColor(item.getID()), tint);
+					}
+					if (!overlays) {
+						return;
 					}
 					if (tile->hasFlag(rme::core::TILESTATE_PROTECTIONZONE)) {
 						draw->AddRectFilled(p0, p1, IM_COL32(40, 200, 80, 55));
@@ -860,10 +1016,39 @@ private:
 					if (tile->hasFlag(rme::core::TILESTATE_NOPVP)) {
 						draw->AddRectFilled(p0, p1, IM_COL32(60, 90, 210, 50));
 					}
+					if (tile->getHouseID() != 0) {
+						draw->AddRectFilled(p0, p1, IM_COL32(180, 70, 210, 70));
+					}
+				};
+
+				if (show_floor_below_ && session_.floor() < rme::MapMaxLayer) {
+					paintTile(session_.floor() + 1, IM_COL32(255, 255, 255, 90), false);
 				}
+				paintTile(session_.floor(), IM_COL32_WHITE, true);
 				if (x == session_.cameraX() && y == session_.cameraY()) {
 					draw->AddRect(p0, ImVec2(p1.x - 1.0f, p1.y - 1.0f), IM_COL32(240, 240, 240, 220));
 				}
+			}
+		}
+
+		for (const auto& spawn : session_.map().spawns()) {
+			if (spawn.center.z != session_.floor()) {
+				continue;
+			}
+			const int col = spawn.center.x - session_.cameraX() + view_w / 2;
+			const int row = spawn.center.y - session_.cameraY() + view_h / 2;
+			const ImVec2 center(
+				origin.x + (static_cast<float>(col) + 0.5f) * tile_px,
+				origin.y + (static_cast<float>(row) + 0.5f) * tile_px
+			);
+			draw->AddCircle(center, std::max(4.0f, static_cast<float>(spawn.radius) * tile_px), IM_COL32(250, 220, 40, 200), 40, 2.0f);
+			draw->AddCircleFilled(center, 3.0f, IM_COL32(250, 220, 40, 255));
+			for (const auto& creature : spawn.monsters) {
+				const ImVec2 monster(
+					center.x + static_cast<float>(creature.dx) * tile_px,
+					center.y + static_cast<float>(creature.dy) * tile_px
+				);
+				draw->AddCircleFilled(monster, 3.5f, IM_COL32(220, 80, 60, 255));
 			}
 		}
 
@@ -978,10 +1163,11 @@ private:
 			rme::core::BrushKind::Fill,
 			rme::core::BrushKind::Select,
 			rme::core::BrushKind::Flags,
+			rme::core::BrushKind::House,
 		};
-		for (int i = 0; i < 7; ++i) {
+		for (int i = 0; i < 8; ++i) {
 			if (i == 4) {
-				// Second row: Fill / Select / Flags
+				// Second row: Fill / Select / Flags / House
 			} else if (i > 0) {
 				ImGui::SameLine();
 			}
@@ -1020,6 +1206,7 @@ private:
 		}
 
 		ImGui::Text("Resolved: %s", rme::core::BrushKindName(session_.resolvedBrush()));
+		ImGui::Text("House id %u", session_.houseId());
 		ImGui::Text("Selection %zu   Clipboard %zu", session_.selection().size(), session_.clipboardSize());
 		if (ImGui::Button("Delete sel")) {
 			session_.deleteSelection();
@@ -1038,6 +1225,7 @@ private:
 		}
 		ImGui::TextDisabled("Fill replaces 4-connected tiles with the same ground id.");
 		ImGui::TextDisabled("Flags paints PZ/PvP bits (green overlay). Shift+click clears.");
+		ImGui::TextDisabled("House paints magenta house tiles for the selected house id.");
 		ImGui::TextDisabled("[ ] change size. Del deletes. Ctrl+C / X / V clipboard.");
 		ImGui::End();
 	}
@@ -1120,6 +1308,10 @@ private:
 	bool show_brushes_ = true;
 	bool show_minimap_ = true;
 	bool show_markers_ = true;
+	bool show_houses_ = true;
+	bool show_spawns_ = true;
+	bool show_goto_ = false;
+	bool show_floor_below_ = true;
 	float zoom_ = 1.0f;
 	bool panning_ = false;
 	ImVec2 pan_last_{};
@@ -1128,6 +1320,12 @@ private:
 	int minimap_tex_h_ = 0;
 	char town_name_[64] = "New town";
 	char waypoint_name_[64] = "Waypoint";
+	char house_name_[64] = "House";
+	char monster_name_[64] = "Rat";
+	int spawn_radius_ = 3;
+	int goto_x_ = 100;
+	int goto_y_ = 100;
+	int goto_z_ = 7;
 	ImVec4 clear_color_ = ImVec4(0.07f, 0.08f, 0.09f, 1.00f);
 	char fetch_url_[512] = "";
 	rme::core::EditorSession session_;

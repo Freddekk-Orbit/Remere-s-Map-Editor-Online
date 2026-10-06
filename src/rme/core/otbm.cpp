@@ -1,4 +1,5 @@
 #include "otbm.h"
+#include "map_xml.h"
 
 #include <cstring>
 #include <filesystem>
@@ -525,7 +526,9 @@ bool SaveOTBM(const Map& map, const std::string& path) {
 bool WriteSampleOTBM(const std::string& path) {
 	Map map;
 	map.createEmpty(256, 256, "sample.otbm");
-	map.setDescription("RME Wasm Phase 5 sample map (minimap + PZ water)");
+	map.setDescription("RME Wasm Phase 6 sample map (houses, spawns, cave)");
+	map.setHouseFilename("houses.xml");
+	map.setSpawnFilename("spawn.xml");
 
 	Town temple;
 	temple.id = 1;
@@ -537,6 +540,21 @@ bool WriteSampleOTBM(const std::string& path) {
 	waypoint.name = "center";
 	waypoint.position = Position(100, 100, rme::MapGroundLayer);
 	map.waypoints().push_back(waypoint);
+
+	House cabin;
+	cabin.id = 1;
+	cabin.name = "Sample Cabin";
+	cabin.town_id = 1;
+	cabin.entry = Position(102, 102, rme::MapGroundLayer);
+	cabin.rent = 500;
+	map.houses().push_back(cabin);
+
+	Spawn spawn;
+	spawn.center = Position(100, 100, rme::MapGroundLayer);
+	spawn.radius = 3;
+	spawn.monsters.push_back(SpawnCreature{"Rat", 0, 0, 60});
+	spawn.monsters.push_back(SpawnCreature{"Cave Rat", 1, 1, 90});
+	map.spawns().push_back(std::move(spawn));
 
 	for (int y = 98; y <= 102; ++y) {
 		for (int x = 98; x <= 102; ++x) {
@@ -551,6 +569,9 @@ bool WriteSampleOTBM(const std::string& path) {
 			if (ground_id == 102) {
 				tile.setFlag(TILESTATE_PROTECTIONZONE);
 			}
+			if (x == 102) {
+				tile.setHouseID(1);
+			}
 			if (x == 100 && y == 100) {
 				tile.addItem(Item(105));
 			} else if (x == 102 && y == 102) {
@@ -559,7 +580,24 @@ bool WriteSampleOTBM(const std::string& path) {
 			map.setTile(std::move(tile));
 		}
 	}
-	return SaveOTBM(map, path);
+
+	for (int y = 99; y <= 101; ++y) {
+		for (int x = 99; x <= 101; ++x) {
+			Tile cave(Position(x, y, rme::MapGroundLayer + 1));
+			cave.setGround(Item(101));
+			if (x == 100 && y == 100) {
+				cave.addItem(Item(103));
+			}
+			map.setTile(std::move(cave));
+		}
+	}
+
+	if (!SaveOTBM(map, path)) {
+		return false;
+	}
+	const std::string houses = CompanionPath(path, map.getHouseFilename(), "houses.xml");
+	const std::string spawns = CompanionPath(path, map.getSpawnFilename(), "spawn.xml");
+	return SaveHouseXml(map, houses) && SaveSpawnXml(map, spawns);
 }
 
 } // namespace core

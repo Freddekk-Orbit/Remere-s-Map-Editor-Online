@@ -4,16 +4,16 @@ WebAssembly port of [Remere's Map Editor](https://github.com/opentibiabr/remeres
 
 This repository is a phased WebAssembly port. The original desktop editor is a wxWidgets + OpenGL application. The browser target removes that windowing stack and boots an ImGui render loop instead.
 
-## Phase 5 status
+## Phase 6 status
 
-- Classic 6x6x6 DAT-colored minimap with protection-zone tint (`src/rme/core/minimap`)
-- WASD / arrow pan, mouse-wheel zoom, middle-drag pan on the map canvas
-- Towns and waypoints: add at camera, jump, delete; persisted in OTBM
-- Flags brush paints OTBM tile bits (PZ, NoPvP, NoLogout, PvP) with Shift to clear
-- ImGui minimap (click to jump) plus town/waypoint window
-- Host test: `rme_core_test` covers minimap colors, PZ sample water, flag undo, towns/waypoints, pan
+- Houses and monster spawns in `src/rme/core` with classic `houses.xml` / `spawn.xml` next to the OTBM
+- House brush assigns OTBM `HOUSETILE` ids (magenta overlay); Shift+click clears
+- Spawn circles and creature dots on the map canvas; add/jump/delete from ImGui
+- Floor-below drawing (dim sprites on z+1) so the sample cave is visible from ground
+- Ctrl+G / Go to position
+- Host test: `rme_core_test` covers house/spawn XML roundtrip, house-brush undo, cave floor, goto
 
-Phase 1–4 (build pipeline, OTBM/undo, sprite atlas, brushes) remain underneath.
+Phase 1–5 (build pipeline, OTBM/undo, sprite atlas, brushes, minimap) remain underneath.
 
 ## Repository layout
 
@@ -21,7 +21,7 @@ Phase 1–4 (build pipeline, OTBM/undo, sprite atlas, brushes) remain underneath
 CMakeLists.txt            Dual-target build (emcmake → Wasm, cmake → native ImGui preview)
 cmake/FetchImGui.cmake    Pins Dear ImGui (or uses third_party/imgui)
 src/main_wasm.cpp         Browser / preview entry + ImGui loop
-src/rme/core/             OTBM / DAT / SPR / brushes / minimap / undo-redo (no ImGui, no GL)
+src/rme/core/             OTBM / DAT / SPR / brushes / minimap / houses / spawns / undo-redo (no ImGui, no GL)
 src/rme/gfx/              WebGL2 sprite atlas (UI-side only)
 src/platform/platform.h   RME_PLATFORM_WASM / RME_USE_WXWIDGETS switches
 src/wasm/                 MEMFS / IDBFS / FETCH bridge
