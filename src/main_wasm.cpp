@@ -288,6 +288,8 @@ private:
 				ImGui::MenuItem("Houses", nullptr, &show_houses_);
 				ImGui::MenuItem("Spawns", nullptr, &show_spawns_);
 				ImGui::MenuItem("Go to position", "Ctrl+G", &show_goto_);
+				ImGui::MenuItem("Tile properties", "Ctrl+I", &show_properties_);
+				ImGui::MenuItem("Find items", "Ctrl+F", &show_find_);
 				ImGui::MenuItem("Floor below", nullptr, &show_floor_below_);
 				ImGui::MenuItem("Brushes", nullptr, &show_brushes_);
 				ImGui::MenuItem("Item palette", nullptr, &show_palette_);
@@ -298,7 +300,7 @@ private:
 				ImGui::EndMenu();
 			}
 			if (ImGui::BeginMenu("Help")) {
-				ImGui::MenuItem("About Phase 6", nullptr, &show_about_);
+				ImGui::MenuItem("About Phase 7", nullptr, &show_about_);
 				ImGui::EndMenu();
 			}
 			ImGui::SameLine(ImGui::GetWindowWidth() - 220.0f);
@@ -327,6 +329,12 @@ private:
 			goto_x_ = session_.cameraX();
 			goto_y_ = session_.cameraY();
 			goto_z_ = session_.floor();
+		}
+		if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_I, false)) {
+			show_properties_ = true;
+		}
+		if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_F, false)) {
+			show_find_ = true;
 		}
 		if (ImGui::IsKeyPressed(ImGuiKey_Delete, false)) {
 			session_.deleteSelection();
@@ -382,6 +390,12 @@ private:
 		if (show_goto_) {
 			DrawGoto();
 		}
+		if (show_properties_) {
+			DrawTileProperties();
+		}
+		if (show_find_) {
+			DrawFind();
+		}
 		if (show_brushes_) {
 			DrawBrushTools();
 		}
@@ -408,14 +422,15 @@ private:
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 16.0f, viewport->WorkPos.y + 28.0f), ImGuiCond_FirstUseEver);
 		ImGui::SetNextWindowSize(ImVec2(460.0f, 240.0f), ImGuiCond_FirstUseEver);
-		if (!ImGui::Begin("RME Wasm - Phase 6", nullptr, ImGuiWindowFlags_NoCollapse)) {
+		if (!ImGui::Begin("RME Wasm - Phase 7", nullptr, ImGuiWindowFlags_NoCollapse)) {
 			ImGui::End();
 			return;
 		}
 
 		ImGui::TextWrapped(
-			"Houses (magenta tiles), monster spawns (yellow circles), and a dim floor below. "
-			"House brush assigns house ids. Ctrl+G jumps to a position. PageDown enters the sample cave."
+			"Tile properties edit AID/UID/text/teleport on the inspected item (right-click a tile). "
+			"Cyan triangles are teleports. Ctrl+F finds items. The sample crate at 100,100 has AID 1000; "
+			"the south-west flower teleports into the cave."
 		);
 		ImGui::Separator();
 		ImGui::Text("Map: %s  %dx%d  tiles=%zu  items=%zu",
@@ -453,8 +468,8 @@ private:
 		ImGui::TextUnformatted("Remere's Map Editor - WebAssembly port");
 		ImGui::Separator();
 		ImGui::TextWrapped(
-			"Phase 6 adds houses and monster spawns (classic XML next to the OTBM), a House brush, "
-			"stacked floor-below drawing, and Ctrl+G to jump to a position."
+			"Phase 7 adds tile item properties (action/unique id, text, teleport destination, door/depot), "
+			"Find (Ctrl+F), and cyan teleport markers. OTBM already stored these attributes; the UI can now edit them."
 		);
 		ImGui::Spacing();
 		ImGui::BulletText("UI: Dear ImGui (SDL2 + OpenGL ES 3.0 / WebGL2)");
@@ -618,6 +633,7 @@ private:
 			session_.clipboardSize());
 		ImGui::Text("Camera %d,%d  floor %d  zoom %.2f", session_.cameraX(), session_.cameraY(), session_.floor(), zoom_);
 		ImGui::Text("House id %u", session_.houseId());
+		ImGui::Text("Inspect %d,%d,%d", session_.inspect().x, session_.inspect().y, session_.inspect().z);
 		if (!map.getWarnings().empty()) {
 			ImGui::Separator();
 			ImGui::Text("Warnings: %zu", map.getWarnings().size());
@@ -938,6 +954,147 @@ private:
 		ImGui::End();
 	}
 
+	void SyncPropertyBuffers() {
+		const Position pos = session_.inspect();
+		const uint64_t key = rme::core::MakeTileKey(pos.x, pos.y, pos.z);
+		const rme::core::Item* item = session_.inspectItem();
+		const uint16_t serial = item ? item->getID() : 0;
+		const uint64_t stamp = (key << 16) ^ serial ^ (session_.history().undoDepth() << 8);
+		if (stamp == props_stamp_) {
+			return;
+		}
+		props_stamp_ = stamp;
+		if (!item) {
+			prop_aid_ = 0;
+			prop_uid_ = 0;
+			prop_count_ = 1;
+			prop_charges_ = 0;
+			prop_depot_ = 0;
+			prop_door_ = 0;
+			prop_has_dest_ = false;
+			prop_dx_ = 0;
+			prop_dy_ = 0;
+			prop_dz_ = rme::MapGroundLayer;
+			prop_text_[0] = '\0';
+			prop_desc_[0] = '\0';
+			return;
+		}
+		const auto props = rme::core::PropsFromItem(*item);
+		prop_aid_ = props.action_id;
+		prop_uid_ = props.unique_id;
+		prop_count_ = props.count;
+		prop_charges_ = props.charges;
+		prop_depot_ = props.depot_id;
+		prop_door_ = props.door_id;
+		prop_has_dest_ = props.has_destination;
+		prop_dx_ = props.destination.x;
+		prop_dy_ = props.destination.y;
+		prop_dz_ = props.destination.z;
+		std::snprintf(prop_text_, sizeof(prop_text_), "%s", props.text.c_str());
+		std::snprintf(prop_desc_, sizeof(prop_desc_), "%s", props.description.c_str());
+	}
+
+	void DrawTileProperties() {
+		const ImGuiViewport* viewport = ImGui::GetMainViewport();
+		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 900.0f, viewport->WorkPos.y + 28.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(300.0f, 380.0f), ImGuiCond_FirstUseEver);
+		if (!ImGui::Begin("Tile properties", &show_properties_)) {
+			ImGui::End();
+			return;
+		}
+
+		if (follow_camera_) {
+			session_.setInspect(Position(session_.cameraX(), session_.cameraY(), session_.floor()));
+		}
+		SyncPropertyBuffers();
+
+		const Position pos = session_.inspect();
+		ImGui::Text("Tile %d, %d, %d", pos.x, pos.y, pos.z);
+		ImGui::Checkbox("Follow camera", &follow_camera_);
+		if (ImGui::Button("Inspect camera")) {
+			follow_camera_ = false;
+			session_.setInspect(Position(session_.cameraX(), session_.cameraY(), session_.floor()));
+			props_stamp_ = 0;
+		}
+		ImGui::SameLine();
+		ImGui::TextDisabled("RMB inspects");
+
+		const rme::core::Item* item = session_.inspectItem();
+		if (!item) {
+			ImGui::TextDisabled("No item on this tile.");
+			ImGui::End();
+			return;
+		}
+		const auto* type = session_.items().get(item->getID());
+		ImGui::Text("Item %u  %s", item->getID(), type ? type->name.c_str() : "");
+		ImGui::InputInt("Action ID", &prop_aid_);
+		ImGui::InputInt("Unique ID", &prop_uid_);
+		ImGui::InputInt("Count", &prop_count_);
+		ImGui::InputInt("Charges", &prop_charges_);
+		ImGui::InputInt("Depot ID", &prop_depot_);
+		ImGui::InputInt("Door ID", &prop_door_);
+		ImGui::InputText("Text", prop_text_, sizeof(prop_text_));
+		ImGui::InputText("Description", prop_desc_, sizeof(prop_desc_));
+		ImGui::Checkbox("Teleport", &prop_has_dest_);
+		if (prop_has_dest_) {
+			ImGui::InputInt("Dest X", &prop_dx_);
+			ImGui::InputInt("Dest Y", &prop_dy_);
+			ImGui::InputInt("Dest Z", &prop_dz_);
+		}
+		if (ImGui::Button("Apply")) {
+			rme::core::ItemProps props;
+			props.action_id = static_cast<uint16_t>(std::clamp(prop_aid_, 0, 65535));
+			props.unique_id = static_cast<uint16_t>(std::clamp(prop_uid_, 0, 65535));
+			props.count = static_cast<uint8_t>(std::clamp(prop_count_, 1, 255));
+			props.charges = static_cast<uint16_t>(std::clamp(prop_charges_, 0, 65535));
+			props.depot_id = static_cast<uint16_t>(std::clamp(prop_depot_, 0, 65535));
+			props.door_id = static_cast<uint8_t>(std::clamp(prop_door_, 0, 255));
+			props.has_destination = prop_has_dest_;
+			props.destination = Position(prop_dx_, prop_dy_, prop_dz_);
+			props.text = prop_text_;
+			props.description = prop_desc_;
+			session_.editTopItem(props);
+			props_stamp_ = 0;
+		}
+		if (item->hasDestination()) {
+			ImGui::SameLine();
+			if (ImGui::Button("Go to dest")) {
+				follow_camera_ = false;
+				session_.goTo(item->getDestination().x, item->getDestination().y, item->getDestination().z);
+			}
+		}
+		ImGui::TextDisabled("Apply is one undo step.");
+		ImGui::End();
+	}
+
+	void DrawFind() {
+		const ImGuiViewport* viewport = ImGui::GetMainViewport();
+		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 900.0f, viewport->WorkPos.y + 420.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(300.0f, 200.0f), ImGuiCond_FirstUseEver);
+		if (!ImGui::Begin("Find items", &show_find_)) {
+			ImGui::End();
+			return;
+		}
+		ImGui::InputInt("Item id", &find_id_);
+		ImGui::InputInt("Action ID", &find_aid_);
+		ImGui::InputInt("Unique ID", &find_uid_);
+		ImGui::Checkbox("Teleports only", &find_teleports_);
+		rme::core::FindQuery query;
+		query.item_id = static_cast<uint16_t>(std::clamp(find_id_, 0, 65535));
+		query.action_id = static_cast<uint16_t>(std::clamp(find_aid_, 0, 65535));
+		query.unique_id = static_cast<uint16_t>(std::clamp(find_uid_, 0, 65535));
+		query.teleports_only = find_teleports_;
+		ImGui::Text("Matches: %zu", session_.findTiles(query).size());
+		if (ImGui::Button("Find next")) {
+			follow_camera_ = false;
+			session_.findNext(query);
+			show_properties_ = true;
+			props_stamp_ = 0;
+		}
+		ImGui::TextDisabled("0 means ignore that field. Ctrl+F opens this window.");
+		ImGui::End();
+	}
+
 	void DrawMapCanvas() {
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 16.0f, viewport->WorkPos.y + 280.0f), ImGuiCond_FirstUseEver);
@@ -969,7 +1126,7 @@ private:
 		}
 		ImGui::SliderFloat("Zoom", &zoom_, 0.5f, 2.5f, "%.2f");
 		ImGui::Checkbox("Floor below", &show_floor_below_);
-		ImGui::TextDisabled("LMB paints. Shift erases/clears flags or house. RMB picks. MMB pan. Wheel zoom. WASD pan. Ctrl+G goto.");
+		ImGui::TextDisabled("LMB paints. Shift erases/clears flags or house. RMB inspects. MMB pan. Wheel zoom. WASD pan. Ctrl+G goto. Ctrl+F find.");
 
 		const float tile_px = 32.0f * zoom_;
 		const ImVec2 avail = ImGui::GetContentRegionAvail();
@@ -1019,6 +1176,15 @@ private:
 					if (tile->getHouseID() != 0) {
 						draw->AddRectFilled(p0, p1, IM_COL32(180, 70, 210, 70));
 					}
+					if (tile->hasTeleport()) {
+						const ImVec2 a(p0.x + tile_px * 0.5f, p0.y + 3.0f);
+						const ImVec2 b(p0.x + tile_px - 3.0f, p0.y + tile_px * 0.38f);
+						const ImVec2 c(p0.x + 3.0f, p0.y + tile_px * 0.38f);
+						draw->AddTriangleFilled(a, b, c, IM_COL32(40, 220, 230, 220));
+					}
+					if (const rme::core::Item* top = tile->topItem(); top && (top->getActionID() != 0 || top->getUniqueID() != 0)) {
+						draw->AddRectFilled(p0, ImVec2(p0.x + 7.0f, p0.y + 7.0f), IM_COL32(250, 210, 40, 255));
+					}
 				};
 
 				if (show_floor_below_ && session_.floor() < rme::MapMaxLayer) {
@@ -1027,6 +1193,9 @@ private:
 				paintTile(session_.floor(), IM_COL32_WHITE, true);
 				if (x == session_.cameraX() && y == session_.cameraY()) {
 					draw->AddRect(p0, ImVec2(p1.x - 1.0f, p1.y - 1.0f), IM_COL32(240, 240, 240, 220));
+				}
+				if (x == session_.inspect().x && y == session_.inspect().y && session_.inspect().z == session_.floor()) {
+					draw->AddRect(p0, ImVec2(p1.x - 1.0f, p1.y - 1.0f), IM_COL32(255, 160, 40, 230));
 				}
 			}
 		}
@@ -1052,6 +1221,26 @@ private:
 			}
 		}
 
+		auto mapToCanvas = [&](int x, int y) -> ImVec2 {
+			const int col = x - session_.cameraX() + view_w / 2;
+			const int row = y - session_.cameraY() + view_h / 2;
+			return ImVec2(
+				origin.x + (static_cast<float>(col) + 0.5f) * tile_px,
+				origin.y + (static_cast<float>(row) + 0.5f) * tile_px
+			);
+		};
+		for (const auto& [_, tile] : session_.map().tiles()) {
+			const rme::core::Item* portal = tile.firstTeleport();
+			if (!portal || tile.getPosition().z != session_.floor()) {
+				continue;
+			}
+			const Position dest = portal->getDestination();
+			if (dest.z != session_.floor()) {
+				continue;
+			}
+			draw->AddLine(mapToCanvas(tile.getPosition().x, tile.getPosition().y), mapToCanvas(dest.x, dest.y), IM_COL32(40, 220, 230, 160), 2.0f);
+		}
+
 		auto tileFromMouse = [&](Position& out) -> bool {
 			const int col = static_cast<int>((mouse.x - origin.x) / tile_px);
 			const int row = static_cast<int>((mouse.y - origin.y) / tile_px);
@@ -1068,6 +1257,33 @@ private:
 
 		Position hover_pos;
 		const bool have_hover = hovered && tileFromMouse(hover_pos);
+		if (have_hover) {
+			if (const rme::core::Tile* hover_tile = session_.map().getTile(hover_pos)) {
+				ImGui::BeginTooltip();
+				ImGui::Text("%d, %d, %d", hover_pos.x, hover_pos.y, hover_pos.z);
+				if (hover_tile->getGround()) {
+					const auto* type = session_.items().get(hover_tile->getGround()->getID());
+					ImGui::Text("ground %u %s", hover_tile->getGround()->getID(), type ? type->name.c_str() : "");
+				}
+				for (const auto& item : hover_tile->getItems()) {
+					const auto* type = session_.items().get(item.getID());
+					ImGui::Text("item %u %s", item.getID(), type ? type->name.c_str() : "");
+					if (item.getActionID() || item.getUniqueID()) {
+						ImGui::Text("  aid %u  uid %u", item.getActionID(), item.getUniqueID());
+					}
+					if (!item.getText().empty()) {
+						ImGui::Text("  \"%s\"", item.getText().c_str());
+					}
+					if (item.hasDestination()) {
+						ImGui::Text("  dest %d,%d,%d", item.getDestination().x, item.getDestination().y, item.getDestination().z);
+					}
+				}
+				if (hover_tile->getHouseID()) {
+					ImGui::Text("house %u", hover_tile->getHouseID());
+				}
+				ImGui::EndTooltip();
+			}
+		}
 		if (have_hover && session_.brushKind() != rme::core::BrushKind::Select && session_.brushKind() != rme::core::BrushKind::Fill) {
 			for (const Position& cell : session_.hoverFootprint(hover_pos)) {
 				const int col = cell.x - session_.cameraX() + view_w / 2;
@@ -1311,7 +1527,10 @@ private:
 	bool show_houses_ = true;
 	bool show_spawns_ = true;
 	bool show_goto_ = false;
+	bool show_properties_ = true;
+	bool show_find_ = false;
 	bool show_floor_below_ = true;
+	bool follow_camera_ = false;
 	float zoom_ = 1.0f;
 	bool panning_ = false;
 	ImVec2 pan_last_{};
@@ -1326,6 +1545,23 @@ private:
 	int goto_x_ = 100;
 	int goto_y_ = 100;
 	int goto_z_ = 7;
+	int prop_aid_ = 0;
+	int prop_uid_ = 0;
+	int prop_count_ = 1;
+	int prop_charges_ = 0;
+	int prop_depot_ = 0;
+	int prop_door_ = 0;
+	int prop_dx_ = 0;
+	int prop_dy_ = 0;
+	int prop_dz_ = 7;
+	bool prop_has_dest_ = false;
+	char prop_text_[128] = "";
+	char prop_desc_[128] = "";
+	uint64_t props_stamp_ = 0;
+	int find_id_ = 0;
+	int find_aid_ = 0;
+	int find_uid_ = 0;
+	bool find_teleports_ = false;
 	ImVec4 clear_color_ = ImVec4(0.07f, 0.08f, 0.09f, 1.00f);
 	char fetch_url_[512] = "";
 	rme::core::EditorSession session_;

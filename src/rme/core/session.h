@@ -14,6 +14,30 @@
 namespace rme {
 namespace core {
 
+struct ItemProps {
+	uint16_t action_id = 0;
+	uint16_t unique_id = 0;
+	uint8_t count = 1;
+	uint16_t charges = 0;
+	uint16_t depot_id = 0;
+	uint8_t door_id = 0;
+	bool has_destination = false;
+	Position destination;
+	std::string text;
+	std::string description;
+};
+
+struct FindQuery {
+	uint16_t item_id = 0;
+	uint16_t action_id = 0;
+	uint16_t unique_id = 0;
+	bool teleports_only = false;
+
+	bool empty() const {
+		return item_id == 0 && action_id == 0 && unique_id == 0 && !teleports_only;
+	}
+};
+
 class EditorSession {
 public:
 	EditorSession();
@@ -104,6 +128,13 @@ public:
 	std::vector<Position> hoverFootprint(const Position& center) const;
 	const std::string& lastError() const { return last_error_; }
 
+	void setInspect(const Position& position) { inspect_ = position; }
+	Position inspect() const { return inspect_; }
+	const Item* inspectItem() const;
+	bool editTopItem(const ItemProps& props);
+	std::vector<Position> findTiles(const FindQuery& query) const;
+	bool findNext(const FindQuery& query);
+
 private:
 	void cancelStroke();
 	void markMinimapDirty() { minimap_dirty_ = true; }
@@ -129,8 +160,59 @@ private:
 	BrushKind brush_kind_ = BrushKind::Auto;
 	uint32_t flag_mask_ = TILESTATE_PROTECTIONZONE;
 	uint32_t house_id_ = 1;
+	Position inspect_{100, 100, rme::MapGroundLayer};
 	std::string last_error_;
 };
+
+inline ItemProps PropsFromItem(const Item& item) {
+	ItemProps props;
+	props.action_id = item.getActionID();
+	props.unique_id = item.getUniqueID();
+	props.count = item.getCount();
+	props.charges = item.getCharges();
+	props.depot_id = item.getDepotID();
+	props.door_id = item.getDoorID();
+	props.has_destination = item.hasDestination();
+	props.destination = item.getDestination();
+	props.text = item.getText();
+	props.description = item.getDescription();
+	return props;
+}
+
+inline void ApplyPropsToItem(Item& item, const ItemProps& props) {
+	item.setActionID(props.action_id);
+	item.setUniqueID(props.unique_id);
+	item.setCount(props.count == 0 ? 1 : props.count);
+	item.setCharges(props.charges);
+	item.setDepotID(props.depot_id);
+	item.setDoorID(props.door_id);
+	item.setText(props.text);
+	item.setDescription(props.description);
+	if (props.has_destination) {
+		item.setDestination(props.destination);
+	} else {
+		item.clearDestination();
+	}
+}
+
+inline bool ItemMatchesQuery(const Item& item, const FindQuery& query) {
+	if (query.empty()) {
+		return false;
+	}
+	if (query.item_id != 0 && item.getID() != query.item_id) {
+		return false;
+	}
+	if (query.action_id != 0 && item.getActionID() != query.action_id) {
+		return false;
+	}
+	if (query.unique_id != 0 && item.getUniqueID() != query.unique_id) {
+		return false;
+	}
+	if (query.teleports_only && !item.hasDestination()) {
+		return false;
+	}
+	return true;
+}
 
 } // namespace core
 } // namespace rme

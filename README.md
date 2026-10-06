@@ -4,16 +4,15 @@ WebAssembly port of [Remere's Map Editor](https://github.com/opentibiabr/remeres
 
 This repository is a phased WebAssembly port. The original desktop editor is a wxWidgets + OpenGL application. The browser target removes that windowing stack and boots an ImGui render loop instead.
 
-## Phase 6 status
+## Phase 7 status
 
-- Houses and monster spawns in `src/rme/core` with classic `houses.xml` / `spawn.xml` next to the OTBM
-- House brush assigns OTBM `HOUSETILE` ids (magenta overlay); Shift+click clears
-- Spawn circles and creature dots on the map canvas; add/jump/delete from ImGui
-- Floor-below drawing (dim sprites on z+1) so the sample cave is visible from ground
-- Ctrl+G / Go to position
-- Host test: `rme_core_test` covers house/spawn XML roundtrip, house-brush undo, cave floor, goto
+- Tile item properties: action id, unique id, count, text, teleport destination, door/depot (`EditorSession::editTopItem`)
+- Find items by id / AID / UID / teleports (Ctrl+F); right-click inspects a tile
+- Cyan teleport triangles on the canvas; yellow pip for AID/UID; hover tooltip
+- Sample crate at 100,100 (AID 1000, UID 2000, text) and a flower portal into the cave
+- Host test: `rme_core_test` covers attribute OTBM roundtrip, findNext, and property undo
 
-Phase 1–5 (build pipeline, OTBM/undo, sprite atlas, brushes, minimap) remain underneath.
+Phase 1–6 (build pipeline, OTBM/undo, sprites, brushes, minimap, houses/spawns) remain underneath.
 
 ## Repository layout
 

@@ -42,6 +42,10 @@ public:
 		dest_ = dest;
 		has_dest_ = true;
 	}
+	void clearDestination() {
+		has_dest_ = false;
+		dest_ = Position();
+	}
 
 	uint16_t getDepotID() const { return depot_id_; }
 	void setDepotID(uint16_t id) { depot_id_ = id; }

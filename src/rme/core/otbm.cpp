@@ -526,7 +526,7 @@ bool SaveOTBM(const Map& map, const std::string& path) {
 bool WriteSampleOTBM(const std::string& path) {
 	Map map;
 	map.createEmpty(256, 256, "sample.otbm");
-	map.setDescription("RME Wasm Phase 6 sample map (houses, spawns, cave)");
+	map.setDescription("RME Wasm Phase 7 sample map (item props, teleports, find)");
 	map.setHouseFilename("houses.xml");
 	map.setSpawnFilename("spawn.xml");
 
@@ -573,7 +573,16 @@ bool WriteSampleOTBM(const std::string& path) {
 				tile.setHouseID(1);
 			}
 			if (x == 100 && y == 100) {
-				tile.addItem(Item(105));
+				Item crate(105);
+				crate.setActionID(1000);
+				crate.setUniqueID(2000);
+				crate.setText("Phase 7 crate");
+				tile.addItem(std::move(crate));
+			} else if (x == 99 && y == 102) {
+				Item portal(104);
+				portal.setActionID(7);
+				portal.setDestination(Position(100, 100, rme::MapGroundLayer + 1));
+				tile.addItem(std::move(portal));
 			} else if (x == 102 && y == 102) {
 				tile.addItem(Item(104));
 			}
@@ -586,7 +595,9 @@ bool WriteSampleOTBM(const std::string& path) {
 			Tile cave(Position(x, y, rme::MapGroundLayer + 1));
 			cave.setGround(Item(101));
 			if (x == 100 && y == 100) {
-				cave.addItem(Item(103));
+				Item wall(103);
+				wall.setDoorID(1);
+				cave.addItem(std::move(wall));
 			}
 			map.setTile(std::move(cave));
 		}
