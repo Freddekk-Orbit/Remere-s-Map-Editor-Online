@@ -657,7 +657,10 @@ private:
 			return;
 		}
 
-		ImGui::Text("Floor %d  %dx%d", mm.floor(), mm.width(), mm.height());
+		const int crop = std::max(8, std::min({48, mm.width(), mm.height()}));
+		const int x0 = std::clamp(session_.cameraX() - crop / 2, 0, mm.width() - crop);
+		const int y0 = std::clamp(session_.cameraY() - crop / 2, 0, mm.height() - crop);
+		ImGui::Text("Floor %d  %dx%d  view %d,%d", mm.floor(), mm.width(), mm.height(), x0, y0);
 		ImGui::TextDisabled("Click to jump. Yellow = town, cyan = waypoint.");
 
 		const ImVec2 avail = ImGui::GetContentRegionAvail();
@@ -665,48 +668,58 @@ private:
 		const ImVec2 image_size(side, side);
 		const ImVec2 image_min = ImGui::GetCursorScreenPos();
 		const ImTextureID tex = static_cast<ImTextureID>(static_cast<intptr_t>(minimap_tex_));
-		ImGui::Image(tex, image_size);
+		const ImVec2 uv0(
+			static_cast<float>(x0) / static_cast<float>(mm.width()),
+			static_cast<float>(y0) / static_cast<float>(mm.height())
+		);
+		const ImVec2 uv1(
+			static_cast<float>(x0 + crop) / static_cast<float>(mm.width()),
+			static_cast<float>(y0 + crop) / static_cast<float>(mm.height())
+		);
+		ImGui::Image(tex, image_size, uv0, uv1);
 		const bool hovered = ImGui::IsItemHovered();
 		ImDrawList* draw = ImGui::GetWindowDrawList();
 
 		auto mapToScreen = [&](int x, int y) -> ImVec2 {
 			return ImVec2(
-				image_min.x + (static_cast<float>(x) + 0.5f) / static_cast<float>(mm.width()) * image_size.x,
-				image_min.y + (static_cast<float>(y) + 0.5f) / static_cast<float>(mm.height()) * image_size.y
+				image_min.x + (static_cast<float>(x - x0) + 0.5f) / static_cast<float>(crop) * image_size.x,
+				image_min.y + (static_cast<float>(y - y0) + 0.5f) / static_cast<float>(crop) * image_size.y
 			);
 		};
+		auto inCrop = [&](int x, int y) {
+			return x >= x0 && y >= y0 && x < x0 + crop && y < y0 + crop;
+		};
 
-		const float tile_w = image_size.x / static_cast<float>(mm.width());
-		const float tile_h = image_size.y / static_cast<float>(mm.height());
+		const float tile_w = image_size.x / static_cast<float>(crop);
+		const float tile_h = image_size.y / static_cast<float>(crop);
 		const ImVec2 cam = mapToScreen(session_.cameraX(), session_.cameraY());
-		const float view_tiles = 18.0f;
 		draw->AddRect(
-			ImVec2(cam.x - view_tiles * 0.5f * tile_w, cam.y - 14.0f * 0.5f * tile_h),
-			ImVec2(cam.x + view_tiles * 0.5f * tile_w, cam.y + 14.0f * 0.5f * tile_h),
+			ImVec2(cam.x - 9.0f * tile_w, cam.y - 7.0f * tile_h),
+			ImVec2(cam.x + 9.0f * tile_w, cam.y + 7.0f * tile_h),
 			IM_COL32(255, 255, 255, 220)
 		);
-		draw->AddCircleFilled(cam, 2.5f, IM_COL32(255, 255, 255, 255));
+		draw->AddCircleFilled(cam, 3.0f, IM_COL32(255, 255, 255, 255));
 
 		for (const auto& town : session_.map().towns()) {
-			if (town.temple.z != session_.floor()) {
+			if (town.temple.z != session_.floor() || !inCrop(town.temple.x, town.temple.y)) {
 				continue;
 			}
 			const ImVec2 p = mapToScreen(town.temple.x, town.temple.y);
-			draw->AddCircleFilled(p, 4.0f, IM_COL32(250, 210, 40, 255));
-			draw->AddCircle(p, 4.0f, IM_COL32(20, 20, 20, 220));
+			draw->AddCircleFilled(p, 5.0f, IM_COL32(250, 210, 40, 255));
+			draw->AddCircle(p, 5.0f, IM_COL32(20, 20, 20, 220));
 		}
 		for (const auto& waypoint : session_.map().waypoints()) {
-			if (waypoint.position.z != session_.floor()) {
+			if (waypoint.position.z != session_.floor() || !inCrop(waypoint.position.x, waypoint.position.y)) {
 				continue;
 			}
 			const ImVec2 p = mapToScreen(waypoint.position.x, waypoint.position.y);
-			draw->AddRectFilled(ImVec2(p.x - 3.0f, p.y - 3.0f), ImVec2(p.x + 3.0f, p.y + 3.0f), IM_COL32(40, 220, 230, 255));
+			draw->AddRectFilled(ImVec2(p.x - 3.5f, p.y - 3.5f), ImVec2(p.x + 3.5f, p.y + 3.5f), IM_COL32(40, 220, 230, 255));
 		}
 
 		if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
 			const ImVec2 mouse = ImGui::GetIO().MousePos;
-			const int mx = static_cast<int>((mouse.x - image_min.x) / image_size.x * static_cast<float>(mm.width()));
-			const int my = static_cast<int>((mouse.y - image_min.y) / image_size.y * static_cast<float>(mm.height()));
+			const int mx = x0 + static_cast<int>((mouse.x - image_min.x) / image_size.x * static_cast<float>(crop));
+			const int my = y0 + static_cast<int>((mouse.y - image_min.y) / image_size.y * static_cast<float>(crop));
 			session_.setCamera(mx, my);
 		}
 
