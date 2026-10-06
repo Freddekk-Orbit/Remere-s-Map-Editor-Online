@@ -525,7 +525,7 @@ bool SaveOTBM(const Map& map, const std::string& path) {
 bool WriteSampleOTBM(const std::string& path) {
 	Map map;
 	map.createEmpty(256, 256, "sample.otbm");
-	map.setDescription("RME Wasm Phase 3 sample map (items 100-105)");
+	map.setDescription("RME Wasm Phase 4 sample map (connected water pool)");
 
 	Town temple;
 	temple.id = 1;
@@ -541,10 +541,17 @@ bool WriteSampleOTBM(const std::string& path) {
 	for (int y = 98; y <= 102; ++y) {
 		for (int x = 98; x <= 102; ++x) {
 			Tile tile(Position(x, y, rme::MapGroundLayer));
-			const uint16_t ground_id = static_cast<uint16_t>(100 + ((x - 98) + (y - 98)) % 6);
+			uint16_t ground_id = 100;
+			if (x >= 99 && x <= 101 && y >= 99 && y <= 101) {
+				ground_id = 102;
+			} else if (x == 98 || y == 98) {
+				ground_id = 101;
+			}
 			tile.setGround(Item(ground_id));
 			if (x == 100 && y == 100) {
 				tile.addItem(Item(105));
+			} else if (x == 102 && y == 102) {
+				tile.addItem(Item(104));
 			}
 			map.setTile(std::move(tile));
 		}

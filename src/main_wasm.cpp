@@ -763,6 +763,7 @@ private:
 		if (ImGui::Button("Paste") && session_.hasClipboard()) {
 			session_.pasteAt(Position(session_.cameraX(), session_.cameraY(), session_.floor()));
 		}
+		ImGui::TextDisabled("Fill replaces 4-connected tiles with the same ground id.");
 		ImGui::TextDisabled("[ ] change size. Del deletes. Ctrl+C / X / V clipboard.");
 		ImGui::End();
 	}
@@ -836,7 +837,7 @@ private:
 	const char* glsl_version_ = nullptr;
 	bool running_ = true;
 	bool show_demo_ = false;
-	bool show_assets_ = true;
+	bool show_assets_ = false;
 	bool show_log_ = false;
 	bool show_about_ = false;
 	bool show_canvas_ = true;

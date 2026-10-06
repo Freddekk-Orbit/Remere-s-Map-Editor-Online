@@ -223,9 +223,12 @@ void EditorSession::fillAt(const Position& position) {
 	for (const Position& cell : FloodGround(map_, position)) {
 		applyLive(cell, BrushKind::Ground, brush_id_, action);
 	}
-	if (!action.changes().empty()) {
-		history_.record(std::move(action));
+	if (action.changes().empty()) {
+		last_error_ = "Fill did not change any tiles (need connected ground with a different brush id)";
+		return;
 	}
+	last_error_.clear();
+	history_.record(std::move(action));
 }
 
 bool EditorSession::pickAt(const Position& position) {
