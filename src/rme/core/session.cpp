@@ -11,6 +11,8 @@ EditorSession::EditorSession() {
 }
 
 void EditorSession::newMap(int width, int height) {
+	cancelStroke();
+	selection_.clear();
 	map_.createEmpty(width, height);
 	history_.clear();
 	last_error_.clear();
@@ -20,6 +22,8 @@ void EditorSession::newMap(int width, int height) {
 }
 
 bool EditorSession::loadOtbm(const std::string& path) {
+	cancelStroke();
+	selection_.clear();
 	Map loaded;
 	if (!LoadOTBM(loaded, path)) {
 		last_error_ = loaded.getError().empty() ? "Failed to load OTBM" : loaded.getError();
@@ -96,6 +100,7 @@ bool EditorSession::createSampleAssets(const std::string& dat_path, const std::s
 }
 
 void EditorSession::paintGround(const Position& position, uint16_t item_id) {
+	endStroke();
 	Action action(ActionIdentifier::Draw);
 	TileChange change;
 	change.position = position;
@@ -112,6 +117,7 @@ void EditorSession::paintGround(const Position& position, uint16_t item_id) {
 }
 
 void EditorSession::eraseTile(const Position& position) {
+	endStroke();
 	const Tile* existing = map_.getTile(position);
 	if (!existing) {
 		return;
@@ -125,11 +131,212 @@ void EditorSession::eraseTile(const Position& position) {
 	history_.add(std::move(action), map_);
 }
 
+BrushKind EditorSession::resolvedBrush() const {
+	return ResolveBrush(brush_kind_, items_.get(brush_id_));
+}
+
+void EditorSession::setBrushSize(int size) {
+	size = std::clamp(size, 1, 9);
+	if (size % 2 == 0) {
+		++size;
+	}
+	brush_size_ = size;
+}
+
+std::vector<Position> EditorSession::hoverFootprint(const Position& center) const {
+	return BrushFootprint(center, brush_size_, map_.getWidth(), map_.getHeight());
+}
+
+void EditorSession::cancelStroke() {
+	stroking_ = false;
+	stroke_ = Action(ActionIdentifier::BrushStroke);
+	stroke_seen_.clear();
+}
+
+void EditorSession::beginStroke() {
+	if (stroking_) {
+		endStroke();
+	}
+	stroking_ = true;
+	stroke_ = Action(ActionIdentifier::BrushStroke);
+	stroke_seen_.clear();
+}
+
+bool EditorSession::applyLive(const Position& position, BrushKind kind, uint16_t item_id, Action& action) {
+	if (!map_.inBounds(position)) {
+		return false;
+	}
+	TileChange change;
+	change.position = position;
+	if (const Tile* existing = map_.getTile(position)) {
+		change.before = existing->deepCopy();
+	} else {
+		change.before.setPosition(position);
+	}
+	change.after = change.before.deepCopy();
+	change.after.setPosition(position);
+	if (!ApplyBrushToTile(change.after, kind, item_id)) {
+		return false;
+	}
+	if (change.after.empty()) {
+		map_.removeTile(position);
+	} else {
+		map_.setTile(change.after.deepCopy());
+	}
+	action.addChange(std::move(change));
+	return true;
+}
+
+void EditorSession::strokeAt(const Position& position) {
+	if (!stroking_) {
+		beginStroke();
+	}
+	const BrushKind kind = resolvedBrush();
+	if (kind == BrushKind::Fill || kind == BrushKind::Select) {
+		return;
+	}
+	for (const Position& cell : BrushFootprint(position, brush_size_, map_.getWidth(), map_.getHeight())) {
+		const uint64_t key = MakeTileKey(cell.x, cell.y, cell.z);
+		if (stroke_seen_.count(key)) {
+			continue;
+		}
+		stroke_seen_.insert(key);
+		applyLive(cell, kind, brush_id_, stroke_);
+	}
+}
+
+void EditorSession::endStroke() {
+	if (!stroking_) {
+		return;
+	}
+	stroking_ = false;
+	if (!stroke_.changes().empty()) {
+		history_.record(std::move(stroke_));
+	}
+	stroke_ = Action(ActionIdentifier::BrushStroke);
+	stroke_seen_.clear();
+}
+
+void EditorSession::fillAt(const Position& position) {
+	endStroke();
+	Action action(ActionIdentifier::Fill);
+	for (const Position& cell : FloodGround(map_, position)) {
+		applyLive(cell, BrushKind::Ground, brush_id_, action);
+	}
+	if (!action.changes().empty()) {
+		history_.record(std::move(action));
+	}
+}
+
+bool EditorSession::pickAt(const Position& position) {
+	const Tile* tile = map_.getTile(position);
+	if (!tile) {
+		return false;
+	}
+	if (!tile->getItems().empty()) {
+		brush_id_ = tile->getItems().back().getID();
+		return true;
+	}
+	if (tile->hasGround()) {
+		brush_id_ = tile->getGround()->getID();
+		return true;
+	}
+	return false;
+}
+
+void EditorSession::deleteSelection() {
+	endStroke();
+	Action action(ActionIdentifier::Erase);
+	for (const Position& cell : selection_.tiles()) {
+		const Tile* existing = map_.getTile(cell);
+		if (!existing || existing->empty()) {
+			continue;
+		}
+		TileChange change;
+		change.position = cell;
+		change.before = existing->deepCopy();
+		change.after.setPosition(cell);
+		if (change.after.empty()) {
+			map_.removeTile(cell);
+		} else {
+			map_.setTile(change.after.deepCopy());
+		}
+		action.addChange(std::move(change));
+	}
+	if (!action.changes().empty()) {
+		history_.record(std::move(action));
+	}
+}
+
+void EditorSession::copySelection() {
+	clipboard_.clear();
+	const auto cells = selection_.tiles();
+	if (cells.empty()) {
+		return;
+	}
+	int min_x = cells.front().x;
+	int min_y = cells.front().y;
+	for (const Position& cell : cells) {
+		min_x = std::min(min_x, cell.x);
+		min_y = std::min(min_y, cell.y);
+	}
+	for (const Position& cell : cells) {
+		const Tile* tile = map_.getTile(cell);
+		if (!tile || tile->empty()) {
+			continue;
+		}
+		ClipboardTile clip;
+		clip.dx = cell.x - min_x;
+		clip.dy = cell.y - min_y;
+		clip.tile = tile->deepCopy();
+		clipboard_.push_back(std::move(clip));
+	}
+}
+
+void EditorSession::cutSelection() {
+	copySelection();
+	deleteSelection();
+}
+
+void EditorSession::pasteAt(const Position& position) {
+	endStroke();
+	if (clipboard_.empty()) {
+		return;
+	}
+	Action action(ActionIdentifier::Paste);
+	for (const ClipboardTile& clip : clipboard_) {
+		const Position dest(position.x + clip.dx, position.y + clip.dy, position.z);
+		if (!map_.inBounds(dest)) {
+			continue;
+		}
+		TileChange change;
+		change.position = dest;
+		if (const Tile* existing = map_.getTile(dest)) {
+			change.before = existing->deepCopy();
+		} else {
+			change.before.setPosition(dest);
+		}
+		change.after = clip.tile.deepCopy();
+		change.after.setPosition(dest);
+		if (change.after.empty()) {
+			map_.removeTile(dest);
+		} else {
+			map_.setTile(change.after.deepCopy());
+		}
+		action.addChange(std::move(change));
+	}
+	if (!action.changes().empty()) {
+		history_.record(std::move(action));
+	}
+}
+
 bool EditorSession::undo() {
+	endStroke();
 	return history_.undo(map_);
 }
 
 bool EditorSession::redo() {
+	endStroke();
 	return history_.redo(map_);
 }
 

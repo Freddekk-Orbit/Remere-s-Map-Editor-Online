@@ -30,3 +30,8 @@ Port the C++ desktop Remere's Map Editor (https://github.com/opentibiabr/remeres
 - Decode/encode classic `.spr` 32×32 magenta-key RLE on the CPU in `src/rme/core`. Pack GPU textures in `src/rme/gfx`.
 - Do not require copyrighted client files: keep synthetic sample `.dat` / `.spr` for tests and first paint.
 - ImGui may `AddImage` atlas UVs for floors and the item palette; fall back to a color swatch when a sprite is missing.
+
+## Phase 4 Conventions
+- Brush, fill, selection, and clipboard logic belongs in `src/rme/core` (`brush.h` + `EditorSession`). ImGui only sends tool events.
+- Drag strokes must be one undo action. Do not commit a history entry per tile.
+- Auto brush resolves from ItemType: ground items replace ground, everything else is an overlay.

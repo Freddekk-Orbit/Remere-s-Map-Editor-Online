@@ -4,16 +4,15 @@ WebAssembly port of [Remere's Map Editor](https://github.com/opentibiabr/remeres
 
 This repository is a phased WebAssembly port. The original desktop editor is a wxWidgets + OpenGL application. The browser target removes that windowing stack and boots an ImGui render loop instead.
 
-## Phase 3 status
+## Phase 4 status
 
-- Classic `.dat` item stream (attribute bytes until `0xFF`, then 8.60-style sprite layout) in `ItemDatabase`
-- Classic `.spr` 32×32 magenta-key RLE decode/encode in `SpriteSheet`
-- Synthetic `/assets/Tibia.dat` + `/assets/Tibia.spr` (items 100–105) so tests do not need copyrighted client files
-- GPU `SpriteAtlas` in `src/rme/gfx` (GL_RGBA / NEAREST) — OpenGL stays out of the map core
-- ImGui floor sprites + item palette; unknown ids still fall back to a color swatch
-- Host test: `rme_core_test` round-trips OTBM, DAT properties, and SPR encode/decode
+- Editor brushes in `src/rme/core`: Auto / Ground / Item overlay / Eraser / Fill / Select
+- Drag-paint coalesces into one undo step; Auto uses DAT flags to choose ground vs overlay
+- Flood-fill connected ground, rectangle selection, copy/cut/paste, eyedropper
+- ImGui brush toolbar plus canvas hover footprint and selection overlay
+- Host test: `rme_core_test` covers DAT/SPR plus overlay, stroke undo, fill, 3x3, selection, and clipboard
 
-Phase 1 (build pipeline, VFS, wx stubs) and Phase 2 (OTBM / tiles / undo) remain underneath.
+Phase 1–3 (build pipeline, OTBM/undo, sprite atlas) remain underneath.
 
 ## Repository layout
 

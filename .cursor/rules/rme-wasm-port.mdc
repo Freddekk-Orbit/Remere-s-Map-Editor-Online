@@ -24,3 +24,4 @@ Port the C++ desktop Remere's Map Editor (https://github.com/opentibiabr/remeres
 - DAT/SPR CPU decode belongs in `src/rme/core`. GL atlas upload belongs in `src/rme/gfx`.
 - Classic `.dat` is an attribute-byte stream ended by `0xFF`, then width/height/layers/patterns/phases and sprite ids.
 - Prefer synthetic sample client files for tests; never vendor copyrighted Tibia assets.
+- Brush/fill/selection/clipboard stay in `src/rme/core`. Drag strokes are one undo action.
