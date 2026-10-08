@@ -38,6 +38,41 @@ struct FindQuery {
 	}
 };
 
+struct StackEntry {
+	int index = 0;
+	uint16_t item_id = 0;
+	bool is_ground = false;
+	std::size_t content_count = 0;
+	uint16_t action_id = 0;
+	uint16_t unique_id = 0;
+};
+
+enum class MapIssueKind {
+	DuplicateUniqueId,
+	InvalidTeleport,
+	UnknownItem,
+};
+
+struct MapIssue {
+	MapIssueKind kind = MapIssueKind::UnknownItem;
+	Position position;
+	uint16_t item_id = 0;
+	uint16_t unique_id = 0;
+	std::string message;
+};
+
+inline const char* MapIssueKindName(MapIssueKind kind) {
+	switch (kind) {
+		case MapIssueKind::DuplicateUniqueId:
+			return "Duplicate UID";
+		case MapIssueKind::InvalidTeleport:
+			return "Bad teleport";
+		case MapIssueKind::UnknownItem:
+			return "Unknown item";
+	}
+	return "Issue";
+}
+
 class EditorSession {
 public:
 	EditorSession();
@@ -128,17 +163,29 @@ public:
 	std::vector<Position> hoverFootprint(const Position& center) const;
 	const std::string& lastError() const { return last_error_; }
 
-	void setInspect(const Position& position) { inspect_ = position; }
+	void setInspect(const Position& position);
 	Position inspect() const { return inspect_; }
+	int inspectIndex() const;
+	void setInspectIndex(int index);
 	const Item* inspectItem() const;
+	Item* inspectItem();
+	std::vector<StackEntry> browseInspect() const;
 	bool editTopItem(const ItemProps& props);
+	bool removeInspectItem();
+	bool moveInspectItem(int delta);
+	bool addContainerItem(uint16_t item_id, uint8_t count = 1);
+	bool removeContainerItem(std::size_t index);
 	std::vector<Position> findTiles(const FindQuery& query) const;
 	bool findNext(const FindQuery& query);
+	std::vector<MapIssue> mapIssues() const;
+	bool goToIssue(std::size_t index);
 
 private:
 	void cancelStroke();
 	void markMinimapDirty() { minimap_dirty_ = true; }
 	bool applyLive(const Position& position, BrushKind kind, uint16_t item_id, Action& action, bool invert = false);
+	void clampInspectIndex();
+	bool recordInspectTile(Tile after);
 
 	Map map_;
 	ActionQueue history_;
@@ -161,6 +208,7 @@ private:
 	uint32_t flag_mask_ = TILESTATE_PROTECTIONZONE;
 	uint32_t house_id_ = 1;
 	Position inspect_{100, 100, rme::MapGroundLayer};
+	int inspect_index_ = -1;
 	std::string last_error_;
 };
 
@@ -177,6 +225,14 @@ inline ItemProps PropsFromItem(const Item& item) {
 	props.text = item.getText();
 	props.description = item.getDescription();
 	return props;
+}
+
+inline bool PropsEqual(const ItemProps& a, const ItemProps& b) {
+	return a.action_id == b.action_id && a.unique_id == b.unique_id && a.count == b.count
+		&& a.charges == b.charges && a.depot_id == b.depot_id && a.door_id == b.door_id
+		&& a.has_destination == b.has_destination
+		&& (!a.has_destination || a.destination == b.destination) && a.text == b.text
+		&& a.description == b.description;
 }
 
 inline void ApplyPropsToItem(Item& item, const ItemProps& props) {
@@ -212,6 +268,18 @@ inline bool ItemMatchesQuery(const Item& item, const FindQuery& query) {
 		return false;
 	}
 	return true;
+}
+
+inline bool ItemMatchesQueryDeep(const Item& item, const FindQuery& query) {
+	if (ItemMatchesQuery(item, query)) {
+		return true;
+	}
+	for (const Item& nested : item.getContents()) {
+		if (ItemMatchesQueryDeep(nested, query)) {
+			return true;
+		}
+	}
+	return false;
 }
 
 } // namespace core

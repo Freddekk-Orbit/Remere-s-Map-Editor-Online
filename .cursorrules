@@ -49,3 +49,7 @@ Port the C++ desktop Remere's Map Editor (https://github.com/opentibiabr/remeres
 ## Phase 7 Conventions
 - Item attributes (AID, UID, text, teleport dest, door/depot) belong on `Item` and persist through OTBM. Edit them with one undoable `editTopItem` per Apply.
 - Find/inspect is session state. ImGui must not scan the tile map itself except through `EditorSession::findTiles` / `findNext`.
+
+## Phase 8 Conventions
+- Tile stack browse, overlay reorder, and container contents belong on `EditorSession` (`browseInspect`, `moveInspectItem`, `addContainerItem`). ImGui only lists the current inspect tile.
+- Map issues are computed in the core (`mapIssues`). Do not walk `map().tiles()` from ImGui.

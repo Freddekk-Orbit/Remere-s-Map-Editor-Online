@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <utility>
 #include <vector>
 
 namespace rme {
@@ -96,6 +97,60 @@ public:
 	void clearFlag(uint32_t flag) { flags_ &= ~flag; }
 
 	std::size_t itemCount() const { return (ground_ ? 1 : 0) + items_.size(); }
+
+	// Ground first (if any), then overlays from bottom to top.
+	int stackCount() const { return static_cast<int>(itemCount()); }
+	bool isGroundIndex(int index) const { return hasGround() && index == 0; }
+	Item* stackItem(int index) {
+		if (ground_) {
+			if (index == 0) {
+				return &*ground_;
+			}
+			--index;
+		}
+		if (index >= 0 && index < static_cast<int>(items_.size())) {
+			return &items_[static_cast<std::size_t>(index)];
+		}
+		return nullptr;
+	}
+	const Item* stackItem(int index) const {
+		if (ground_) {
+			if (index == 0) {
+				return &*ground_;
+			}
+			--index;
+		}
+		if (index >= 0 && index < static_cast<int>(items_.size())) {
+			return &items_[static_cast<std::size_t>(index)];
+		}
+		return nullptr;
+	}
+	bool removeStackIndex(int index) {
+		if (isGroundIndex(index)) {
+			ground_.reset();
+			return true;
+		}
+		int overlay = index;
+		if (ground_) {
+			--overlay;
+		}
+		if (overlay < 0 || overlay >= static_cast<int>(items_.size())) {
+			return false;
+		}
+		items_.erase(items_.begin() + overlay);
+		return true;
+	}
+	bool moveOverlay(int overlay_index, int delta) {
+		if (overlay_index < 0 || overlay_index >= static_cast<int>(items_.size())) {
+			return false;
+		}
+		const int dest = overlay_index + delta;
+		if (dest < 0 || dest >= static_cast<int>(items_.size())) {
+			return false;
+		}
+		std::swap(items_[static_cast<std::size_t>(overlay_index)], items_[static_cast<std::size_t>(dest)]);
+		return true;
+	}
 
 	Tile deepCopy() const { return *this; }
 

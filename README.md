@@ -4,15 +4,15 @@ WebAssembly port of [Remere's Map Editor](https://github.com/opentibiabr/remeres
 
 This repository is a phased WebAssembly port. The original desktop editor is a wxWidgets + OpenGL application. The browser target removes that windowing stack and boots an ImGui render loop instead.
 
-## Phase 7 status
+## Phase 8 status
 
-- Tile item properties: action id, unique id, count, text, teleport destination, door/depot (`EditorSession::editTopItem`)
-- Find items by id / AID / UID / teleports (Ctrl+F); right-click inspects a tile
-- Cyan teleport triangles on the canvas; yellow pip for AID/UID; hover tooltip
-- Sample crate at 100,100 (AID 1000, UID 2000, text) and a flower portal into the cave
-- Host test: `rme_core_test` covers attribute OTBM roundtrip, findNext, and property undo
+- Browse tile: select ground vs overlays, move up/down, remove one item (`EditorSession::browseInspect`)
+- Container contents on the selected item (nested OTBM items already loaded/saved)
+- Map issues: duplicate unique ids, teleports to empty tiles, unknown item ids (Ctrl+E)
+- Sample crate at 100,100 holds loot and has a cover flower; house flower duplicates UID 2000
+- Host test: `rme_core_test` covers stack reorder, container add/remove, issue list, and OTBM nested roundtrip
 
-Phase 1–6 (build pipeline, OTBM/undo, sprites, brushes, minimap, houses/spawns) remain underneath.
+Phase 1–7 (build pipeline, OTBM/undo, sprites, brushes, minimap, houses/spawns, item props/find) remain underneath.
 
 ## Repository layout
 
