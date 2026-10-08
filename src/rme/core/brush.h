@@ -24,7 +24,28 @@ enum class BrushKind {
 	Door,
 	Table,
 	Carpet,
+	Creature,
 };
+
+inline constexpr const char* kSampleCreatures[] = {
+	"Rat",
+	"Cave Rat",
+	"Wolf",
+	"Orc",
+	"Troll",
+	"Snake",
+	"Bear",
+	"Spider",
+};
+
+inline bool SpawnCovers(const Spawn& spawn, const Position& position) {
+	if (spawn.center.z != position.z) {
+		return false;
+	}
+	const int dx = position.x - spawn.center.x;
+	const int dy = position.y - spawn.center.y;
+	return dx >= -spawn.radius && dx <= spawn.radius && dy >= -spawn.radius && dy <= spawn.radius;
+}
 
 const char* BrushKindName(BrushKind kind);
 

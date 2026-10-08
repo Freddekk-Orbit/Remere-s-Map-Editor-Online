@@ -37,6 +37,8 @@ const char* BrushKindName(BrushKind kind) {
 			return "Table";
 		case BrushKind::Carpet:
 			return "Carpet";
+		case BrushKind::Creature:
+			return "Creature";
 		default:
 			return "Brush";
 	}

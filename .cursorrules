@@ -77,3 +77,8 @@ Port the C++ desktop Remere's Map Editor (https://github.com/opentibiabr/remeres
 - Browser download belongs in `rme::wasm::DownloadVfsFile` (Blob + `<a download>`). Map packing (`saveMapZip`) stays in `src/rme/core`.
 - Download map writes OTBM + `houses.xml` + `spawn.xml` as a store-only zip, and keeps a copy on IDBFS `/persist`.
 - Map name and OTBM description are core fields. ImGui only edits them through `EditorSession`. New-map size is clamped to OTBM min/max. Ctrl+S downloads; it must not pan.
+
+## Phase 14 Conventions
+- Creature brush lives in `src/rme/core`. It mutates spawn.xml monsters, not OTBM tiles. ImGui only sends Creature strokes and the selected name/radius.
+- Nearby tiles in one stroke share a spawn when they stay inside its radius. Shift+click removes the creature at that tile (and an empty spawn).
+- Spawn list edits still skip the tile undo stack.

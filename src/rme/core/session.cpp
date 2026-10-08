@@ -289,6 +289,7 @@ void EditorSession::cancelStroke() {
 	stroking_ = false;
 	stroke_ = Action(ActionIdentifier::BrushStroke);
 	stroke_seen_.clear();
+	stroke_spawn_index_ = -1;
 }
 
 void EditorSession::beginStroke() {
@@ -298,6 +299,7 @@ void EditorSession::beginStroke() {
 	stroking_ = true;
 	stroke_ = Action(ActionIdentifier::BrushStroke);
 	stroke_seen_.clear();
+	stroke_spawn_index_ = -1;
 }
 
 bool EditorSession::applyLive(const Position& position, BrushKind kind, uint16_t item_id, Action& action, bool invert) {
@@ -770,7 +772,7 @@ void EditorSession::strokeAt(const Position& position, bool invert) {
 	BrushKind kind = resolvedBrush();
 	if (invert && kind != BrushKind::Flags && kind != BrushKind::House && kind != BrushKind::Wall
 		&& kind != BrushKind::Border && kind != BrushKind::Doodad && kind != BrushKind::Door
-		&& kind != BrushKind::Table && kind != BrushKind::Carpet) {
+		&& kind != BrushKind::Table && kind != BrushKind::Carpet && kind != BrushKind::Creature) {
 		kind = BrushKind::Eraser;
 	}
 	if (kind == BrushKind::Fill || kind == BrushKind::Select) {
@@ -800,6 +802,10 @@ void EditorSession::strokeAt(const Position& position, bool invert) {
 		strokeCarpetAt(position, invert);
 		return;
 	}
+	if (kind == BrushKind::Creature) {
+		strokeCreatureAt(position, invert);
+		return;
+	}
 	if (kind == BrushKind::House && house_id_ == 0) {
 		house_id_ = addHouse("House", position);
 	}
@@ -823,6 +829,7 @@ void EditorSession::endStroke() {
 	}
 	stroke_ = Action(ActionIdentifier::BrushStroke);
 	stroke_seen_.clear();
+	stroke_spawn_index_ = -1;
 }
 
 void EditorSession::fillAt(const Position& position) {
@@ -1186,12 +1193,19 @@ bool EditorSession::goToHouse(uint32_t id) {
 }
 
 std::size_t EditorSession::addSpawn(const Position& center, int radius) {
+	return addSpawn(center, radius, creature_name_);
+}
+
+std::size_t EditorSession::addSpawn(const Position& center, int radius, std::string first_monster) {
 	Spawn spawn;
 	spawn.center = center;
 	spawn.radius = std::clamp(radius, 1, 16);
-	SpawnCreature rat;
-	rat.name = "Rat";
-	spawn.monsters.push_back(std::move(rat));
+	if (!first_monster.empty()) {
+		SpawnCreature creature;
+		creature.name = std::move(first_monster);
+		creature.spawntime = spawn_time_;
+		spawn.monsters.push_back(std::move(creature));
+	}
 	map_.spawns().push_back(std::move(spawn));
 	map_.markChanged();
 	return map_.spawns().size() - 1;
@@ -1227,6 +1241,136 @@ bool EditorSession::addSpawnMonster(std::size_t spawn_index, std::string name, i
 	map_.spawns()[spawn_index].monsters.push_back(std::move(creature));
 	map_.markChanged();
 	return true;
+}
+
+void EditorSession::setCreatureName(std::string name) {
+	creature_name_ = name.empty() ? "Monster" : std::move(name);
+}
+
+void EditorSession::setSpawnRadius(int radius) {
+	spawn_radius_ = std::clamp(radius, 1, 16);
+}
+
+void EditorSession::setSpawnTime(uint32_t seconds) {
+	spawn_time_ = std::max(1u, seconds);
+}
+
+int EditorSession::findSpawnCovering(const Position& position) const {
+	int fallback = -1;
+	for (std::size_t i = 0; i < map_.spawns().size(); ++i) {
+		const Spawn& spawn = map_.spawns()[i];
+		if (!SpawnCovers(spawn, position)) {
+			continue;
+		}
+		const int dx = position.x - spawn.center.x;
+		const int dy = position.y - spawn.center.y;
+		for (const SpawnCreature& creature : spawn.monsters) {
+			if (creature.dx == dx && creature.dy == dy) {
+				return static_cast<int>(i);
+			}
+		}
+		if (fallback < 0) {
+			fallback = static_cast<int>(i);
+		}
+	}
+	return fallback;
+}
+
+std::vector<std::string> EditorSession::creaturesAt(const Position& position) const {
+	std::vector<std::string> names;
+	for (const Spawn& spawn : map_.spawns()) {
+		if (!SpawnCovers(spawn, position)) {
+			continue;
+		}
+		const int dx = position.x - spawn.center.x;
+		const int dy = position.y - spawn.center.y;
+		for (const SpawnCreature& creature : spawn.monsters) {
+			if (creature.dx == dx && creature.dy == dy) {
+				names.push_back(creature.name);
+			}
+		}
+	}
+	return names;
+}
+
+void EditorSession::removeCreaturesAt(const Position& position) {
+	for (std::size_t i = 0; i < map_.spawns().size();) {
+		Spawn& spawn = map_.spawns()[i];
+		if (!SpawnCovers(spawn, position)) {
+			++i;
+			continue;
+		}
+		const int dx = position.x - spawn.center.x;
+		const int dy = position.y - spawn.center.y;
+		const auto before = spawn.monsters.size();
+		spawn.monsters.erase(
+			std::remove_if(
+				spawn.monsters.begin(),
+				spawn.monsters.end(),
+				[&](const SpawnCreature& creature) { return creature.dx == dx && creature.dy == dy; }
+			),
+			spawn.monsters.end()
+		);
+		if (spawn.monsters.size() == before) {
+			++i;
+			continue;
+		}
+		map_.markChanged();
+		if (spawn.monsters.empty()) {
+			if (stroke_spawn_index_ == static_cast<int>(i)) {
+				stroke_spawn_index_ = -1;
+			} else if (stroke_spawn_index_ > static_cast<int>(i)) {
+				--stroke_spawn_index_;
+			}
+			removeSpawn(i);
+			continue;
+		}
+		++i;
+	}
+}
+
+void EditorSession::strokeCreatureAt(const Position& position, bool invert) {
+	for (const Position& cell : BrushFootprint(position, brush_size_, map_.getWidth(), map_.getHeight())) {
+		const uint64_t key = MakeTileKey(cell.x, cell.y, cell.z);
+		if (stroke_seen_.count(key)) {
+			continue;
+		}
+		stroke_seen_.insert(key);
+		if (invert) {
+			removeCreaturesAt(cell);
+			continue;
+		}
+
+		int index = -1;
+		if (stroke_spawn_index_ >= 0 && stroke_spawn_index_ < static_cast<int>(map_.spawns().size())
+			&& SpawnCovers(map_.spawns()[static_cast<std::size_t>(stroke_spawn_index_)], cell)) {
+			index = stroke_spawn_index_;
+		} else {
+			index = findSpawnCovering(cell);
+		}
+		if (index < 0) {
+			index = static_cast<int>(addSpawn(cell, spawn_radius_, std::string()));
+		}
+		stroke_spawn_index_ = index;
+		Spawn& spawn = map_.spawns()[static_cast<std::size_t>(index)];
+		const int dx = cell.x - spawn.center.x;
+		const int dy = cell.y - spawn.center.y;
+		bool replaced = false;
+		for (SpawnCreature& creature : spawn.monsters) {
+			if (creature.dx == dx && creature.dy == dy) {
+				if (creature.name != creature_name_ || creature.spawntime != spawn_time_) {
+					creature.name = creature_name_;
+					creature.spawntime = spawn_time_;
+					map_.markChanged();
+				}
+				replaced = true;
+				break;
+			}
+		}
+		if (!replaced) {
+			addSpawnMonster(static_cast<std::size_t>(index), creature_name_, dx, dy, spawn_time_);
+		}
+	}
 }
 
 void EditorSession::setInspect(const Position& position) {

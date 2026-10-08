@@ -4,14 +4,14 @@ WebAssembly port of [Remere's Map Editor](https://github.com/opentibiabr/remeres
 
 This repository is a phased WebAssembly port. The original desktop editor is a wxWidgets + OpenGL application. The browser target removes that windowing stack and boots an ImGui render loop instead.
 
-## Phase 13 status
+## Phase 14 status
 
-- **File → Download map** (Ctrl+S) writes the OTBM plus `houses.xml` / `spawn.xml` into a zip, keeps a copy on IDBFS `/persist`, and offers a browser download
-- **File → Map properties** edits the map file name and OTBM description. Those fields round-trip through save/load
-- **File → New map** picks a name and size (minimum 256×256, the OTBM floor). Empty maps start with house/spawn XML names already set
-- Host test: `rme_core_test` covers new-map size/name, description round-trip, and unzip of the map bundle
+- **Creature** brush paints monsters into `spawn.xml`. Nearby tiles in one stroke share a spawn while they stay inside its radius
+- Shift+click removes the creature on that tile (and deletes the spawn if it becomes empty). Ground tiles are not erased
+- Sample names: Rat, Cave Rat, Wolf, Orc, Troll, Snake, Bear, Spider. Yellow circle is the radius; red dots are monsters
+- Host test: `rme_core_test` covers shared-spawn strokes, name replace, shift-clear, and spawn XML round-trip
 
-Phase 1–12 remain underneath.
+Phase 1–13 remain underneath.
 
 ## Repository layout
 

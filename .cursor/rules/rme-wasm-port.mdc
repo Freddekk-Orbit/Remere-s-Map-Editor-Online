@@ -36,3 +36,4 @@ Port the C++ desktop Remere's Map Editor (https://github.com/opentibiabr/remeres
 - Sample `.spr` is original 32×32 art only. Never vendor copyrighted Tibia client files. Grounds tile without a 1px outline.
 - Browser map download uses `DownloadVfsFile`. Zip packing (`saveMapZip`) stays in `src/rme/core` (OTBM + houses.xml + spawn.xml).
 - Map name/description are core fields. New-map size is clamped to OTBM min/max. ImGui only calls `EditorSession`.
+- Creature brush mutates spawn.xml via `EditorSession`. Nearby tiles share a spawn inside its radius. Shift+click removes that tile's creature. Spawn edits skip tile undo.
