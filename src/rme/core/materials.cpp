@@ -1,5 +1,6 @@
 #include "materials.h"
 
+#include <algorithm>
 #include <fstream>
 #include <iterator>
 #include <sstream>
@@ -45,6 +46,32 @@ std::string AttrString(const std::string& tag, const char* key, const std::strin
 		return fallback;
 	}
 	return tag.substr(value_start, value_end - value_start);
+}
+
+std::vector<uint16_t> ParseIdList(const std::string& text) {
+	std::vector<uint16_t> ids;
+	std::size_t i = 0;
+	while (i < text.size()) {
+		while (i < text.size() && (text[i] == ',' || text[i] == ' ')) {
+			++i;
+		}
+		if (i >= text.size()) {
+			break;
+		}
+		std::size_t j = i;
+		while (j < text.size() && text[j] != ',' && text[j] != ' ') {
+			++j;
+		}
+		try {
+			const int id = std::stoi(text.substr(i, j - i));
+			if (id > 0) {
+				ids.push_back(static_cast<uint16_t>(id));
+			}
+		} catch (...) {
+		}
+		i = j;
+	}
+	return ids;
 }
 
 int AttrInt(const std::string& tag, const char* key, int fallback = 0) {
@@ -137,15 +164,39 @@ bool GroundBorderSet::containsBorder(uint16_t item_id) const {
 		|| item_id == corner_ne || item_id == corner_se || item_id == corner_sw || item_id == corner_nw;
 }
 
+bool DoodadSet::contains(uint16_t item_id) const {
+	if (item_id == 0) {
+		return false;
+	}
+	if (look_id == item_id) {
+		return true;
+	}
+	for (uint16_t id : items) {
+		if (id == item_id) {
+			return true;
+		}
+	}
+	return false;
+}
+
+uint16_t DoodadSet::pick(const Position& position) const {
+	if (items.empty()) {
+		return look_id;
+	}
+	const std::size_t index = static_cast<std::size_t>(position.x + position.y + position.z) % items.size();
+	return items[index];
+}
+
 void Materials::clear() {
 	tilesets_.clear();
 	walls_.clear();
 	borders_.clear();
+	doodads_.clear();
 	error_.clear();
 }
 
 void Materials::ensureDefaults() {
-	if (!tilesets_.empty() || !walls_.empty() || !borders_.empty()) {
+	if (!tilesets_.empty() || !walls_.empty() || !borders_.empty() || !doodads_.empty()) {
 		return;
 	}
 	WallSet timber;
@@ -165,6 +216,13 @@ void Materials::ensureDefaults() {
 	water.corner_sw = 116;
 	water.corner_nw = 117;
 	borders_.push_back(water);
+
+	DoodadSet flowers;
+	flowers.name = "Flowers";
+	flowers.look_id = 104;
+	flowers.chance = 60;
+	flowers.items = {104};
+	doodads_.push_back(flowers);
 
 	tilesets_.push_back(Tileset{"Grounds", {100, 101, 102}});
 	tilesets_.push_back(Tileset{"Borders", {110, 111, 112, 113, 114, 115, 116, 117}});
@@ -197,6 +255,19 @@ bool Materials::writeSample(const std::string& path) {
 					<< border.edge_e << "\" edge_s=\"" << border.edge_s << "\" edge_w=\"" << border.edge_w
 					<< "\" corner_ne=\"" << border.corner_ne << "\" corner_se=\"" << border.corner_se
 					<< "\" corner_sw=\"" << border.corner_sw << "\" corner_nw=\"" << border.corner_nw << "\"/>\n";
+			}
+		}
+		if (set.name == "Items") {
+			for (const auto& doodad : doodads_) {
+				out << "    <doodad name=\"" << XmlEscape(doodad.name) << "\" lookid=\"" << doodad.look_id
+					<< "\" chance=\"" << doodad.chance << "\" items=\"";
+				for (std::size_t i = 0; i < doodad.items.size(); ++i) {
+					if (i > 0) {
+						out << ",";
+					}
+					out << doodad.items[i];
+				}
+				out << "\"/>\n";
 			}
 		}
 		for (uint16_t id : set.items) {
@@ -233,6 +304,7 @@ bool Materials::load(const std::string& path) {
 		const auto item_at = xml.find("<item", pos);
 		const auto wall_at = xml.find("<wall", pos);
 		const auto ground_at = xml.find("<ground", pos);
+		const auto doodad_at = xml.find("<doodad", pos);
 		std::size_t next = std::string::npos;
 		const char* kind = nullptr;
 		if (tileset_at != std::string::npos && (next == std::string::npos || tileset_at < next)) {
@@ -250,6 +322,10 @@ bool Materials::load(const std::string& path) {
 		if (ground_at != std::string::npos && (next == std::string::npos || ground_at < next)) {
 			next = ground_at;
 			kind = "ground";
+		}
+		if (doodad_at != std::string::npos && (next == std::string::npos || doodad_at < next)) {
+			next = doodad_at;
+			kind = "doodad";
 		}
 		if (next == std::string::npos) {
 			break;
@@ -292,10 +368,20 @@ bool Materials::load(const std::string& path) {
 			border.corner_sw = static_cast<uint16_t>(AttrInt(tag, "corner_sw"));
 			border.corner_nw = static_cast<uint16_t>(AttrInt(tag, "corner_nw"));
 			borders_.push_back(std::move(border));
+		} else if (std::string(kind) == "doodad") {
+			DoodadSet doodad;
+			doodad.name = AttrString(tag, "name", "Doodad");
+			doodad.look_id = static_cast<uint16_t>(AttrInt(tag, "lookid"));
+			doodad.chance = AttrInt(tag, "chance", 60);
+			doodad.items = ParseIdList(AttrString(tag, "items"));
+			if (doodad.items.empty() && doodad.look_id != 0) {
+				doodad.items.push_back(doodad.look_id);
+			}
+			doodads_.push_back(std::move(doodad));
 		}
 	}
 
-	if (tilesets_.empty() && walls_.empty() && borders_.empty()) {
+	if (tilesets_.empty() && walls_.empty() && borders_.empty() && doodads_.empty()) {
 		error_ = "materials.xml had no tilesets";
 		return false;
 	}
@@ -316,6 +402,15 @@ const GroundBorderSet* Materials::borderForItem(uint16_t item_id) const {
 	for (const auto& border : borders_) {
 		if (border.contains(item_id)) {
 			return &border;
+		}
+	}
+	return nullptr;
+}
+
+const DoodadSet* Materials::doodadForItem(uint16_t item_id) const {
+	for (const auto& doodad : doodads_) {
+		if (doodad.contains(item_id)) {
+			return &doodad;
 		}
 	}
 	return nullptr;
@@ -476,6 +571,45 @@ bool ApplyBordersToTile(Tile& tile, const Map& map, const GroundBorderSet& set) 
 	}
 	items.insert(items.begin(), std::make_move_iterator(borders.begin()), std::make_move_iterator(borders.end()));
 	return true;
+}
+
+bool DoodadHits(const Position& position, int chance) {
+	chance = std::clamp(chance, 0, 100);
+	if (chance >= 100) {
+		return true;
+	}
+	if (chance <= 0) {
+		return false;
+	}
+	const uint32_t roll = static_cast<uint32_t>(position.x * 17 + position.y * 31 + position.z * 13) % 100u;
+	return roll < static_cast<uint32_t>(chance);
+}
+
+bool ApplyDoodadToTile(Tile& tile, uint16_t item_id) {
+	if (item_id == 0) {
+		return false;
+	}
+	for (const Item& item : tile.getItems()) {
+		if (item.getID() == item_id) {
+			return false;
+		}
+	}
+	tile.addItem(Item(item_id));
+	return true;
+}
+
+bool RemoveDoodadFromTile(Tile& tile, const DoodadSet& set) {
+	bool changed = false;
+	auto& items = tile.getItems();
+	for (auto it = items.begin(); it != items.end();) {
+		if (set.contains(it->getID())) {
+			it = items.erase(it);
+			changed = true;
+		} else {
+			++it;
+		}
+	}
+	return changed;
 }
 
 } // namespace core

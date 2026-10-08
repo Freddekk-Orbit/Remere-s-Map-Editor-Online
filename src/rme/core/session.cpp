@@ -204,6 +204,9 @@ BrushKind EditorSession::resolvedBrush() const {
 	if (brush_kind_ == BrushKind::Auto && materials_.wallForItem(brush_id_)) {
 		return BrushKind::Wall;
 	}
+	if (brush_kind_ == BrushKind::Auto && materials_.doodadForItem(brush_id_)) {
+		return BrushKind::Doodad;
+	}
 	return ResolveBrush(brush_kind_, items_.get(brush_id_));
 }
 
@@ -480,13 +483,51 @@ void EditorSession::strokeBorderAt(const Position& position, bool invert) {
 	restitchBorders(stroke_, *set, seeds);
 }
 
+void EditorSession::strokeDoodadAt(const Position& position, bool invert) {
+	const DoodadSet* set = materials_.doodadForItem(brush_id_);
+	if (!set) {
+		last_error_ = "Doodad brush needs a doodad item from materials.xml";
+		return;
+	}
+	last_error_.clear();
+
+	for (const Position& cell : BrushFootprint(position, brush_size_, map_.getWidth(), map_.getHeight())) {
+		const uint64_t key = MakeTileKey(cell.x, cell.y, cell.z);
+		if (stroke_seen_.count(key)) {
+			continue;
+		}
+		stroke_seen_.insert(key);
+		if (!invert && !DoodadHits(cell, set->chance)) {
+			continue;
+		}
+
+		Tile after;
+		if (const Tile* existing = map_.getTile(cell)) {
+			after = existing->deepCopy();
+		} else {
+			after.setPosition(cell);
+		}
+		after.setPosition(cell);
+
+		bool changed = false;
+		if (invert) {
+			changed = RemoveDoodadFromTile(after, *set);
+		} else {
+			changed = ApplyDoodadToTile(after, set->pick(cell));
+		}
+		if (changed) {
+			writeTileAfter(stroke_, cell, std::move(after));
+		}
+	}
+}
+
 void EditorSession::strokeAt(const Position& position, bool invert) {
 	if (!stroking_) {
 		beginStroke();
 	}
 	BrushKind kind = resolvedBrush();
 	if (invert && kind != BrushKind::Flags && kind != BrushKind::House && kind != BrushKind::Wall
-		&& kind != BrushKind::Border) {
+		&& kind != BrushKind::Border && kind != BrushKind::Doodad) {
 		kind = BrushKind::Eraser;
 	}
 	if (kind == BrushKind::Fill || kind == BrushKind::Select) {
@@ -498,6 +539,10 @@ void EditorSession::strokeAt(const Position& position, bool invert) {
 	}
 	if (kind == BrushKind::Border) {
 		strokeBorderAt(position, invert);
+		return;
+	}
+	if (kind == BrushKind::Doodad) {
+		strokeDoodadAt(position, invert);
 		return;
 	}
 	if (kind == BrushKind::House && house_id_ == 0) {

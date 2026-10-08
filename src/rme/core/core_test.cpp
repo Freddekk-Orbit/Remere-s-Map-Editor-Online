@@ -125,8 +125,8 @@ int main() {
 	}
 
 	if (session.materials().tilesets().size() != 4 || session.materials().walls().size() != 1
-		|| session.materials().borders().size() != 1) {
-		return Fail("sample materials should load Grounds/Borders/Walls/Items, Timber, and Water shores");
+		|| session.materials().borders().size() != 1 || session.materials().doodads().size() != 1) {
+		return Fail("sample materials should load tilesets, Timber, Water shores, and Flowers doodad");
 	}
 	if (!session.materials().wallForItem(106) || !session.materials().wallForItem(109)
 		|| session.materials().wallForItem(103) != nullptr) {
@@ -667,7 +667,84 @@ int main() {
 		return Fail("removing the NE pond tile should restitch 150,150 to a NE shore");
 	}
 
-	std::printf("rme core test ok: %zu tiles, borders/walls/tilesets, browse/containers, map issues\n",
+	if (!session.materials().doodadForItem(104) || session.materials().doodadForItem(100) != nullptr) {
+		return Fail("flower 104 should be a doodad; grass should not");
+	}
+	if (!rme::core::DoodadHits(Position(0, 0, 7), 100) || rme::core::DoodadHits(Position(0, 0, 7), 0)) {
+		return Fail("doodad chance 100 always hits and 0 never hits");
+	}
+
+	tools.setBrushKind(rme::core::BrushKind::Auto);
+	tools.setBrushSize(1);
+	tools.setBrushId(104);
+	if (tools.resolvedBrush() != rme::core::BrushKind::Doodad) {
+		return Fail("auto brush on a flower should resolve to Doodad");
+	}
+
+	Position doodad_hit(160, 160, z);
+	Position doodad_miss(160, 160, z);
+	bool found_hit = false;
+	bool found_miss = false;
+	for (int y = 160; y < 180 && (!found_hit || !found_miss); ++y) {
+		for (int x = 160; x < 180 && (!found_hit || !found_miss); ++x) {
+			const Position pos(x, y, z);
+			if (!found_hit && rme::core::DoodadHits(pos, 60)) {
+				doodad_hit = pos;
+				found_hit = true;
+			} else if (!found_miss && !rme::core::DoodadHits(pos, 60)) {
+				doodad_miss = pos;
+				found_miss = true;
+			}
+		}
+	}
+	if (!found_hit || !found_miss) {
+		return Fail("expected both doodad hit and miss tiles in 160-179");
+	}
+
+	tools.beginStroke();
+	tools.strokeAt(doodad_hit);
+	tools.strokeAt(doodad_miss);
+	tools.endStroke();
+	if (!tile_has(tools.map().getTile(doodad_hit), 104)) {
+		return Fail("doodad hit tile should receive a flower");
+	}
+	if (tile_has(tools.map().getTile(doodad_miss), 104)) {
+		return Fail("doodad miss tile should stay empty at 60% chance");
+	}
+
+	tools.setBrushSize(3);
+	const Position scatter(170, 170, z);
+	int expected_scatter = 0;
+	for (const auto& cell : tools.hoverFootprint(scatter)) {
+		if (rme::core::DoodadHits(cell, 60)) {
+			++expected_scatter;
+		}
+	}
+	tools.beginStroke();
+	tools.strokeAt(scatter);
+	tools.endStroke();
+	int got_scatter = 0;
+	for (const auto& cell : tools.hoverFootprint(scatter)) {
+		if (tile_has(tools.map().getTile(cell), 104)) {
+			++got_scatter;
+		}
+	}
+	if (got_scatter != expected_scatter) {
+		return Fail("3x3 doodad scatter should match DoodadHits");
+	}
+
+	tools.setBrushSize(1);
+	tools.beginStroke();
+	tools.strokeAt(doodad_hit, true);
+	tools.endStroke();
+	if (tile_has(tools.map().getTile(doodad_hit), 104)) {
+		return Fail("shift+doodad should remove the flower family");
+	}
+	if (!tools.undo() || !tile_has(tools.map().getTile(doodad_hit), 104)) {
+		return Fail("undo doodad erase should restore the flower");
+	}
+
+	std::printf("rme core test ok: %zu tiles, doodads/borders/walls, browse/containers, map issues\n",
 		reloaded.map().tileCount());
 	return 0;
 }

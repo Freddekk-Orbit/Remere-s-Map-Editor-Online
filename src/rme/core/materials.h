@@ -37,6 +37,16 @@ struct GroundBorderSet {
 	bool contains(uint16_t item_id) const { return containsInner(item_id) || containsBorder(item_id); }
 };
 
+struct DoodadSet {
+	std::string name = "Doodad";
+	uint16_t look_id = 0;
+	int chance = 60;
+	std::vector<uint16_t> items;
+
+	bool contains(uint16_t item_id) const;
+	uint16_t pick(const Position& position) const;
+};
+
 struct Tileset {
 	std::string name;
 	std::vector<uint16_t> items;
@@ -52,14 +62,17 @@ public:
 	const std::vector<Tileset>& tilesets() const { return tilesets_; }
 	const std::vector<WallSet>& walls() const { return walls_; }
 	const std::vector<GroundBorderSet>& borders() const { return borders_; }
+	const std::vector<DoodadSet>& doodads() const { return doodads_; }
 	const WallSet* wallForItem(uint16_t item_id) const;
 	const GroundBorderSet* borderForItem(uint16_t item_id) const;
+	const DoodadSet* doodadForItem(uint16_t item_id) const;
 	const std::string& lastError() const { return error_; }
 
 private:
 	std::vector<Tileset> tilesets_;
 	std::vector<WallSet> walls_;
 	std::vector<GroundBorderSet> borders_;
+	std::vector<DoodadSet> doodads_;
 	std::string error_;
 };
 
@@ -80,6 +93,10 @@ bool TileHasInnerGround(const Tile& tile, const GroundBorderSet& set);
 std::vector<uint16_t> ResolveBorderPieces(const Map& map, const Position& position, const GroundBorderSet& set);
 bool ApplyBordersToTile(Tile& tile, const Map& map, const GroundBorderSet& set);
 bool RemoveBordersFromTile(Tile& tile, const GroundBorderSet& set);
+
+bool DoodadHits(const Position& position, int chance);
+bool ApplyDoodadToTile(Tile& tile, uint16_t item_id);
+bool RemoveDoodadFromTile(Tile& tile, const DoodadSet& set);
 
 } // namespace core
 } // namespace rme

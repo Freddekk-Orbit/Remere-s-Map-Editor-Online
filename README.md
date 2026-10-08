@@ -4,14 +4,14 @@ WebAssembly port of [Remere's Map Editor](https://github.com/opentibiabr/remeres
 
 This repository is a phased WebAssembly port. The original desktop editor is a wxWidgets + OpenGL application. The browser target removes that windowing stack and boots an ImGui render loop instead.
 
-## Phase 10 status
+## Phase 11 status
 
-- Water auto-borders from `materials.xml` (`<ground>` with 4 edges + 4 outer corners)
-- Auto on water (or a shore piece) resolves to Border. Shift+click removes water and restitches neighbors. Fill uses the inner id, then restitches. Ground tool still paints raw water
-- Sample 3×3 pool keeps tile count 34 and already has shores (NW 117, N 110, NE 114, …; center has none)
-- Host test: `rme_core_test` covers a 2×2 pond → four corners, extend north → edge 110, invert restitch
+- Doodad brushes from `materials.xml` (`<doodad name lookid chance items>`). Sample **Flowers** is item 104 at 60% chance
+- Auto on a doodad item resolves to Doodad. Overlay still paints every tile. Shift+click removes that doodad family
+- Scatter uses a stable position hash (not RNG), so the same tile always hits or misses. One undo action per drag
+- Host test: `rme_core_test` covers a hit tile, a miss tile, 3×3 scatter vs `DoodadHits`, and invert undo
 
-Phase 1–9 (build pipeline, OTBM/undo, sprites, brushes, minimap, houses/spawns, item props/find, browse-tile, walls/tilesets) remain underneath.
+Phase 1–10 remain underneath.
 
 ## Repository layout
 

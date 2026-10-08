@@ -194,6 +194,7 @@ private:
 	void strokeWallAt(const Position& position, bool invert);
 	void strokeBorderAt(const Position& position, bool invert);
 	void restitchBorders(Action& action, const GroundBorderSet& set, const std::vector<Position>& seeds);
+	void strokeDoodadAt(const Position& position, bool invert);
 
 	Map map_;
 	ActionQueue history_;

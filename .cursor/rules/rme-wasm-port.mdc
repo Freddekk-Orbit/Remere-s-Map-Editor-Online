@@ -31,3 +31,4 @@ Port the C++ desktop Remere's Map Editor (https://github.com/opentibiabr/remeres
 - Tile stack browse, container contents, and map issues stay in `src/rme/core`. ImGui only lists `browseInspect` / `mapIssues`.
 - Tilesets and wall auto-connect stay in `src/rme/core` (`Materials`, Wall brush). ImGui only lists tilesets and paints wall strokes.
 - Ground auto-borders stay in `src/rme/core` (`GroundBorderSet`, Border brush). ImGui only sends border strokes; fill restitches after replacing inner ground.
+- Doodad scatter stays in `src/rme/core` (`DoodadSet`). Chance is a stable position hash. ImGui only sends doodad strokes.

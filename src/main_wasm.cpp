@@ -302,7 +302,7 @@ private:
 				ImGui::EndMenu();
 			}
 			if (ImGui::BeginMenu("Help")) {
-				ImGui::MenuItem("About Phase 10", nullptr, &show_about_);
+				ImGui::MenuItem("About Phase 11", nullptr, &show_about_);
 				ImGui::EndMenu();
 			}
 			ImGui::SameLine(ImGui::GetWindowWidth() - 220.0f);
@@ -430,15 +430,15 @@ private:
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 16.0f, viewport->WorkPos.y + 28.0f), ImGuiCond_FirstUseEver);
 		ImGui::SetNextWindowSize(ImVec2(460.0f, 240.0f), ImGuiCond_FirstUseEver);
-		if (!ImGui::Begin("RME Wasm - Phase 10", nullptr, ImGuiWindowFlags_NoCollapse)) {
+		if (!ImGui::Begin("RME Wasm - Phase 11", nullptr, ImGuiWindowFlags_NoCollapse)) {
 			ImGui::End();
 			return;
 		}
 
 		ImGui::TextWrapped(
-			"Water auto-borders: Auto or Border on water paints shores against land (edges 110-113, "
-			"corners 114-117). The sample pool is already stitched. Shift+click removes water and "
-			"restitches neighbors. Ground tool still paints raw water with no shores."
+			"Doodad scatter: Auto or Doodad on a flower places overlays with 60% chance so a 3x3 brush "
+			"does not fill every tile. Shift+click removes that doodad family. Overlay still paints "
+			"every tile. Walls and water borders from Phase 9-10 stay as they were."
 		);
 		ImGui::Separator();
 		ImGui::Text("Map: %s  %dx%d  tiles=%zu  items=%zu",
@@ -476,9 +476,9 @@ private:
 		ImGui::TextUnformatted("Remere's Map Editor - WebAssembly port");
 		ImGui::Separator();
 		ImGui::TextWrapped(
-			"Phase 10 adds ground auto-borders from materials.xml. Water (102) carries 4 edge + 4 outer "
-			"corner shore pieces. Auto on water becomes Border; fill uses the inner id then restitches. "
-			"Drag strokes stay one undo action, including neighbor restitch."
+			"Phase 11 adds doodad brushes from materials.xml. A doodad is a named overlay set with a "
+			"chance (sample Flowers = item 104 at 60%). Scatter uses a stable position hash, so the "
+			"same tile always hits or misses. One undo action per drag."
 		);
 		ImGui::Spacing();
 		ImGui::BulletText("UI: Dear ImGui (SDL2 + OpenGL ES 3.0 / WebGL2)");
@@ -1505,10 +1505,11 @@ private:
 			rme::core::BrushKind::House,
 			rme::core::BrushKind::Wall,
 			rme::core::BrushKind::Border,
+			rme::core::BrushKind::Doodad,
 		};
-		for (int i = 0; i < 10; ++i) {
-			if (i == 5) {
-				// Second row: Select / Flags / House / Wall / Border
+		for (int i = 0; i < 11; ++i) {
+			if (i == 6) {
+				// Second row: Flags / House / Wall / Border / Doodad
 			} else if (i > 0) {
 				ImGui::SameLine();
 			}
@@ -1569,6 +1570,7 @@ private:
 		ImGui::TextDisabled("House paints magenta house tiles for the selected house id.");
 		ImGui::TextDisabled("Wall auto-connects timber pieces. Shift+click removes the family.");
 		ImGui::TextDisabled("Border paints water shores against land. Shift+click removes water.");
+		ImGui::TextDisabled("Doodad scatters overlays (60% flowers). Shift+click removes the family.");
 		ImGui::TextDisabled("[ ] change size. Del deletes. Ctrl+C / X / V clipboard.");
 		ImGui::End();
 	}
@@ -1642,7 +1644,8 @@ private:
 			if (ImGui::IsItemHovered()) {
 				const bool is_wall = session_.materials().wallForItem(type->id) != nullptr;
 				const bool is_border = session_.materials().borderForItem(type->id) != nullptr;
-				ImGui::SetTooltip("%u %s\nsprite %u%s%s%s%s%s",
+				const bool is_doodad = session_.materials().doodadForItem(type->id) != nullptr;
+				ImGui::SetTooltip("%u %s\nsprite %u%s%s%s%s%s%s",
 					type->id,
 					type->name.c_str(),
 					type->sprite_id,
@@ -1650,7 +1653,8 @@ private:
 					type->not_walkable ? "\nnot walkable" : "",
 					type->pickupable ? "\npickupable" : "",
 					is_wall ? "\nwall set" : "",
-					is_border ? "\nborder set" : "");
+					is_border ? "\nborder set" : "",
+					is_doodad ? "\ndoodad set" : "");
 			}
 			ImGui::PopID();
 			++index;
