@@ -2,6 +2,7 @@
 #include "sprites.h"
 #include "minimap.h"
 #include "tile.h"
+#include "zip.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -805,7 +806,76 @@ int main() {
 		return Fail("undo carpet erase should restore the NW corner");
 	}
 
-	std::printf("rme core test ok: %zu tiles, furniture/doodads/borders/walls, browse/containers, map issues\n",
+	EditorSession blank;
+	blank.newMap(512, 256, "Town Square");
+	if (blank.map().getWidth() != 512 || blank.map().getHeight() != 256 || blank.map().tileCount() != 0
+		|| blank.otbmFileName() != "Town Square.otbm" || blank.zipFileName() != "Town Square.zip") {
+		return Fail("newMap should set size and a sanitized file name on an empty map");
+	}
+	blank.newMap(8, 8, "");
+	if (blank.map().getWidth() != 256 || blank.map().getHeight() != 256 || blank.otbmFileName() != "Untitled.otbm") {
+		return Fail("newMap should clamp below 256 and default the name");
+	}
+
+	session.setMapName("harbor");
+	session.setMapDescription("Phase 13 harbor");
+	if (!session.map().hasChanged()) {
+		return Fail("map properties should mark the map dirty");
+	}
+	const auto named = (dir / "harbor.otbm").string();
+	if (!session.saveOtbm(named)) {
+		return Fail("save after renaming failed");
+	}
+	if (session.map().hasChanged()) {
+		return Fail("save should clear the dirty flag");
+	}
+	EditorSession named_reload;
+	if (!named_reload.loadOtbm(named) || named_reload.map().getDescription() != "Phase 13 harbor"
+		|| named_reload.otbmFileName() != "harbor.otbm") {
+		return Fail("OTBM should roundtrip map name and description");
+	}
+
+	const auto zip_path = (dir / "harbor.zip").string();
+	if (!session.saveMapZip(zip_path)) {
+		return Fail("saveMapZip failed");
+	}
+	std::vector<rme::core::ZipEntry> zipped;
+	if (!rme::core::ReadStoreZip(zip_path, zipped) || zipped.size() != 3) {
+		return Fail("zip should contain otbm + houses.xml + spawn.xml");
+	}
+	bool saw_otbm = false;
+	bool saw_houses = false;
+	bool saw_spawns = false;
+	const auto extracted = (dir / "from_zip.otbm").string();
+	for (const auto& entry : zipped) {
+		if (entry.name == "harbor.otbm") {
+			saw_otbm = true;
+			FILE* out = std::fopen(extracted.c_str(), "wb");
+			if (!out || std::fwrite(entry.data.data(), 1, entry.data.size(), out) != entry.data.size()) {
+				if (out) {
+					std::fclose(out);
+				}
+				return Fail("could not extract otbm from zip");
+			}
+			std::fclose(out);
+		} else if (entry.name == "houses.xml") {
+			saw_houses = true;
+		} else if (entry.name == "spawn.xml") {
+			saw_spawns = true;
+		}
+	}
+	if (!saw_otbm || !saw_houses || !saw_spawns) {
+		return Fail("zip entry names should match the map bundle");
+	}
+	EditorSession from_zip;
+	if (!from_zip.loadOtbm(extracted) || from_zip.map().getDescription() != "Phase 13 harbor") {
+		return Fail("otbm inside the zip should load with the saved description");
+	}
+	if (rme::core::MapOtbmFileName("../bad:.zip") != "bad_.otbm") {
+		return Fail("map file names should drop paths and illegal characters");
+	}
+
+	std::printf("rme core test ok: %zu tiles, map download zip, furniture/doodads/borders/walls\n",
 		reloaded.map().tileCount());
 	return 0;
 }

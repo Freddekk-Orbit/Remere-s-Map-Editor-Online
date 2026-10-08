@@ -72,3 +72,8 @@ Port the C++ desktop Remere's Map Editor (https://github.com/opentibiabr/remeres
 - Door, table, and carpet families live in `src/rme/core` (`DoorSet` / `TableSet` / `CarpetSet` in materials.xml). ImGui only sends those strokes.
 - Tables restitch from a 4-neighbor mask. Carpets restitch one overlay piece per tile (inner / edges / corners). Doors pick H/V from nearby walls.
 - Sample `.spr` stays original 32×32 art (no copyrighted client files). Grounds must tile without a 1px outline so the online canvas reads as a map.
+
+## Phase 13 Conventions
+- Browser download belongs in `rme::wasm::DownloadVfsFile` (Blob + `<a download>`). Map packing (`saveMapZip`) stays in `src/rme/core`.
+- Download map writes OTBM + `houses.xml` + `spawn.xml` as a store-only zip, and keeps a copy on IDBFS `/persist`.
+- Map name and OTBM description are core fields. ImGui only edits them through `EditorSession`. New-map size is clamped to OTBM min/max. Ctrl+S downloads; it must not pan.

@@ -238,8 +238,11 @@ private:
 	void DrawUi() {
 		if (ImGui::BeginMainMenuBar()) {
 			if (ImGui::BeginMenu("File")) {
-				if (ImGui::MenuItem("New map")) {
-					session_.newMap();
+				if (ImGui::MenuItem("New map...", "Ctrl+N")) {
+					OpenNewMapDialog();
+				}
+				if (ImGui::MenuItem("Map properties...")) {
+					OpenMapProperties();
 				}
 				if (ImGui::MenuItem("Create sample OTBM")) {
 					session_.createSampleMap(std::string(rme::wasm::kUploadDir) + "/sample.otbm");
@@ -254,9 +257,11 @@ private:
 				if (ImGui::MenuItem("Upload client / map files...")) {
 					rme::wasm::OpenBrowserFilePicker();
 				}
-				if (ImGui::MenuItem("Save map to /persist/edited.otbm")) {
-					session_.saveOtbm(std::string(rme::wasm::kPersistDir) + "/edited.otbm");
-					rme::wasm::SyncPersistentStore();
+				if (ImGui::MenuItem("Save to /persist", nullptr, false, true)) {
+					SaveToPersist();
+				}
+				if (ImGui::MenuItem("Download map", "Ctrl+S")) {
+					DownloadMapBundle();
 				}
 				ImGui::Separator();
 				if (ImGui::MenuItem("Undo", "Ctrl+Z", false, session_.canUndo())) {
@@ -302,7 +307,7 @@ private:
 				ImGui::EndMenu();
 			}
 			if (ImGui::BeginMenu("Help")) {
-				ImGui::MenuItem("About Phase 12", nullptr, &show_about_);
+				ImGui::MenuItem("About Phase 13", nullptr, &show_about_);
 				ImGui::EndMenu();
 			}
 			ImGui::SameLine(ImGui::GetWindowWidth() - 220.0f);
@@ -340,6 +345,12 @@ private:
 		}
 		if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_E, false)) {
 			show_issues_ = true;
+		}
+		if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_N, false)) {
+			OpenNewMapDialog();
+		}
+		if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S, false)) {
+			DownloadMapBundle();
 		}
 		if (ImGui::IsKeyPressed(ImGuiKey_Delete, false)) {
 			session_.deleteSelection();
@@ -395,6 +406,12 @@ private:
 		if (show_goto_) {
 			DrawGoto();
 		}
+		if (show_new_map_) {
+			DrawNewMap();
+		}
+		if (show_map_props_) {
+			DrawMapProperties();
+		}
 		if (show_properties_) {
 			DrawTileProperties();
 		}
@@ -430,38 +447,41 @@ private:
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 16.0f, viewport->WorkPos.y + 28.0f), ImGuiCond_FirstUseEver);
 		ImGui::SetNextWindowSize(ImVec2(460.0f, 240.0f), ImGuiCond_FirstUseEver);
-		if (!ImGui::Begin("RME Wasm - Phase 12", nullptr, ImGuiWindowFlags_NoCollapse)) {
+		if (!ImGui::Begin("RME Wasm - Phase 13", nullptr, ImGuiWindowFlags_NoCollapse)) {
 			ImGui::End();
 			return;
 		}
 
 		ImGui::TextWrapped(
-			"Furniture: Auto picks Door, Table, or Carpet from materials.xml. Tables and carpets "
-			"auto-connect; doors face the nearby wall. Sample .spr tiles are seamless 32x32 drawings "
-			"(not client files) so grass, water, wood, and red carpet read as objects instead of "
-			"outlined squares. Shift+click removes that furniture family."
+			"Download the map as a .zip (OTBM + houses.xml + spawn.xml). File -> Map properties "
+			"edits the name and OTBM description. File -> New map picks size (minimum 256). Ctrl+S "
+			"saves to /persist and offers a browser download."
 		);
 		ImGui::Separator();
-		ImGui::Text("Map: %s  %dx%d  tiles=%zu  items=%zu",
+		ImGui::Text("Map: %s  %dx%d  tiles=%zu  items=%zu%s",
 			session_.map().getName().c_str(),
 			session_.map().getWidth(),
 			session_.map().getHeight(),
 			session_.map().tileCount(),
-			session_.map().itemCount());
+			session_.map().itemCount(),
+			session_.map().hasChanged() ? "  *" : "");
 		if (!session_.lastError().empty()) {
 			ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", session_.lastError().c_str());
 		}
+		if (!last_save_message_.empty()) {
+			ImGui::TextColored(ImVec4(0.55f, 0.85f, 0.60f, 1.0f), "%s", last_save_message_.c_str());
+		}
 		ImGui::Spacing();
-		if (ImGui::Button("Open file picker")) {
-			rme::wasm::OpenBrowserFilePicker();
+		if (ImGui::Button("Download map")) {
+			DownloadMapBundle();
 		}
 		ImGui::SameLine();
-		if (ImGui::Button("Undo") && session_.canUndo()) {
-			session_.undo();
+		if (ImGui::Button("Map properties")) {
+			OpenMapProperties();
 		}
 		ImGui::SameLine();
-		if (ImGui::Button("Redo") && session_.canRedo()) {
-			session_.redo();
+		if (ImGui::Button("New map")) {
+			OpenNewMapDialog();
 		}
 		ImGui::End();
 	}
@@ -477,9 +497,9 @@ private:
 		ImGui::TextUnformatted("Remere's Map Editor - WebAssembly port");
 		ImGui::Separator();
 		ImGui::TextWrapped(
-			"Phase 12 adds door, table, and carpet brushes plus a fuller sample Tibia.spr. Grounds "
-			"tile without a 1px border. Doors, tables, and carpets are original 32x32 drawings in the "
-			"sample sheet so the online editor shows readable furniture without shipping client files."
+			"Phase 13 lets you take a map out of the browser. Download map writes OTBM plus house and "
+			"spawn XML into a zip, keeps a copy on IDBFS /persist, and uses the map name as the file "
+			"name. Map properties edit that name and the OTBM description string."
 		);
 		ImGui::Spacing();
 		ImGui::BulletText("UI: Dear ImGui (SDL2 + OpenGL ES 3.0 / WebGL2)");
@@ -945,6 +965,100 @@ private:
 		ImGui::End();
 	}
 
+	void OpenNewMapDialog() {
+		show_new_map_ = true;
+		std::snprintf(new_map_name_, sizeof(new_map_name_), "Untitled.otbm");
+		new_map_w_ = 256;
+		new_map_h_ = 256;
+	}
+
+	void OpenMapProperties() {
+		show_map_props_ = true;
+		std::snprintf(map_name_, sizeof(map_name_), "%s", session_.map().getName().c_str());
+		std::snprintf(map_desc_, sizeof(map_desc_), "%s", session_.map().getDescription().c_str());
+	}
+
+	std::string PersistOtbmPath() const {
+		return std::string(rme::wasm::kPersistDir) + "/" + session_.otbmFileName();
+	}
+
+	std::string PersistZipPath() const {
+		return std::string(rme::wasm::kPersistDir) + "/" + session_.zipFileName();
+	}
+
+	void SaveToPersist() {
+		const auto path = PersistOtbmPath();
+		if (!session_.saveOtbm(path)) {
+			last_save_message_.clear();
+			return;
+		}
+		rme::wasm::SyncPersistentStore();
+		last_save_message_ = "Saved " + path;
+	}
+
+	void DownloadMapBundle() {
+		const auto zip_path = PersistZipPath();
+		if (!session_.saveMapZip(zip_path)) {
+			last_save_message_.clear();
+			return;
+		}
+		rme::wasm::SyncPersistentStore();
+		if (rme::wasm::DownloadVfsFile(zip_path, session_.zipFileName())) {
+			last_save_message_ = "Downloaded " + session_.zipFileName() + " (also in /persist)";
+		} else {
+			last_save_message_ = "Wrote " + zip_path + " (browser download unavailable)";
+		}
+	}
+
+	void DrawNewMap() {
+		const ImGuiViewport* viewport = ImGui::GetMainViewport();
+		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 360.0f, viewport->WorkPos.y + 90.0f), ImGuiCond_Appearing);
+		ImGui::SetNextWindowSize(ImVec2(320.0f, 180.0f), ImGuiCond_FirstUseEver);
+		if (!ImGui::Begin("New map", &show_new_map_)) {
+			ImGui::End();
+			return;
+		}
+		ImGui::InputText("Name", new_map_name_, sizeof(new_map_name_));
+		ImGui::InputInt("Width", &new_map_w_);
+		ImGui::InputInt("Height", &new_map_h_);
+		ImGui::TextDisabled("Size is clamped to %d-%d.", rme::MapMinWidth, rme::MapMaxWidth);
+		if (ImGui::Button("Create")) {
+			session_.newMap(new_map_w_, new_map_h_, new_map_name_);
+			last_save_message_.clear();
+			show_new_map_ = false;
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Cancel")) {
+			show_new_map_ = false;
+		}
+		ImGui::End();
+	}
+
+	void DrawMapProperties() {
+		const ImGuiViewport* viewport = ImGui::GetMainViewport();
+		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 380.0f, viewport->WorkPos.y + 110.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(420.0f, 220.0f), ImGuiCond_FirstUseEver);
+		if (!ImGui::Begin("Map properties", &show_map_props_)) {
+			ImGui::End();
+			return;
+		}
+		ImGui::InputText("Name", map_name_, sizeof(map_name_));
+		ImGui::InputTextMultiline("Description", map_desc_, sizeof(map_desc_), ImVec2(-1.0f, 72.0f));
+		ImGui::Text("Size %d x %d  tiles %zu",
+			session_.map().getWidth(), session_.map().getHeight(), session_.map().tileCount());
+		if (ImGui::Button("Apply")) {
+			session_.setMapName(map_name_);
+			session_.setMapDescription(map_desc_);
+			std::snprintf(map_name_, sizeof(map_name_), "%s", session_.map().getName().c_str());
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Revert")) {
+			OpenMapProperties();
+		}
+		ImGui::TextDisabled("Name becomes the .otbm / .zip file name. Description is stored in the OTBM.");
+		ImGui::End();
+	}
+
 	void DrawGoto() {
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 400.0f, viewport->WorkPos.y + 120.0f), ImGuiCond_FirstUseEver);
@@ -1245,7 +1359,7 @@ private:
 		}
 		ImGui::SliderFloat("Zoom", &zoom_, 0.5f, 2.5f, "%.2f");
 		ImGui::Checkbox("Floor below", &show_floor_below_);
-		ImGui::TextDisabled("LMB paints. Shift erases/clears flags, house, or walls. RMB inspects. MMB pan. Wheel zoom. WASD pan. Ctrl+G goto. Ctrl+F find.");
+		ImGui::TextDisabled("LMB paints. Shift erases. RMB inspects. MMB pan. Wheel zoom. WASD pan. Ctrl+S download. Ctrl+N new map. Ctrl+G goto.");
 
 		const float tile_px = 32.0f * zoom_;
 		const ImVec2 avail = ImGui::GetContentRegionAvail();
@@ -1689,6 +1803,8 @@ private:
 	bool show_assets_ = false;
 	bool show_log_ = false;
 	bool show_about_ = false;
+	bool show_new_map_ = false;
+	bool show_map_props_ = false;
 	bool show_canvas_ = true;
 	bool show_inspector_ = true;
 	bool show_palette_ = true;
@@ -1738,6 +1854,12 @@ private:
 	int container_add_id_ = 104;
 	ImVec4 clear_color_ = ImVec4(0.07f, 0.08f, 0.09f, 1.00f);
 	char fetch_url_[512] = "";
+	char new_map_name_[128] = "Untitled.otbm";
+	char map_name_[128] = "Untitled.otbm";
+	char map_desc_[512] = "";
+	int new_map_w_ = 256;
+	int new_map_h_ = 256;
+	std::string last_save_message_;
 	rme::core::EditorSession session_;
 	rme::gfx::SpriteAtlas atlas_;
 };

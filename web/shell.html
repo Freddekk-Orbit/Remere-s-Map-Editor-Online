@@ -108,10 +108,20 @@
       }
     });
 
+    window.addEventListener('keydown', function(event) {
+      if (!(event.ctrlKey || event.metaKey)) {
+        return;
+      }
+      const key = (event.key || '').toLowerCase();
+      if (key === 's' || key === 'n') {
+        event.preventDefault();
+      }
+    });
+
     var Module = {
       preRun: [],
       postRun: [function() {
-        if (statusEl) statusEl.textContent = 'Ready — drop client files or use File → Upload';
+        if (statusEl) statusEl.textContent = 'Ready — File → Download map (Ctrl+S) or drop client files';
       }],
       print: function() {
         console.log.apply(console, arguments);

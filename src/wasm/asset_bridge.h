@@ -52,5 +52,6 @@ AssetKind GuessAssetKind(const std::string& name);
 void FetchAsset(const std::string& url, const std::string& dest_path, FetchCallback callback);
 void OpenBrowserFilePicker();
 bool PersistUploadedFile(const std::string& vfs_path);
+bool DownloadVfsFile(const std::string& vfs_path, const std::string& filename);
 
 } // namespace rme::wasm

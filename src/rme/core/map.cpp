@@ -21,8 +21,8 @@ void Map::clear() {
 
 void Map::createEmpty(int width, int height, const std::string& name) {
 	clear();
-	width_ = std::max(rme::MapMinWidth, width);
-	height_ = std::max(rme::MapMinHeight, height);
+	width_ = std::clamp(width, rme::MapMinWidth, rme::MapMaxWidth);
+	height_ = std::clamp(height, rme::MapMinHeight, rme::MapMaxHeight);
 	name_ = name;
 	description_ = "No map description available.";
 	house_file_.clear();
