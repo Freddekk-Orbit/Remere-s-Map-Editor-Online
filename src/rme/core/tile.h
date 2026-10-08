@@ -49,6 +49,43 @@ public:
 		return true;
 	}
 
+	Item* topItem() {
+		if (!items_.empty()) {
+			return &items_.back();
+		}
+		return ground_ ? &*ground_ : nullptr;
+	}
+	const Item* topItem() const {
+		if (!items_.empty()) {
+			return &items_.back();
+		}
+		return ground_ ? &*ground_ : nullptr;
+	}
+
+	bool hasTeleport() const {
+		if (ground_ && ground_->hasDestination()) {
+			return true;
+		}
+		for (const Item& item : items_) {
+			if (item.hasDestination()) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	const Item* firstTeleport() const {
+		if (ground_ && ground_->hasDestination()) {
+			return &*ground_;
+		}
+		for (const Item& item : items_) {
+			if (item.hasDestination()) {
+				return &item;
+			}
+		}
+		return nullptr;
+	}
+
 	uint32_t getFlags() const { return flags_; }
 	void setFlags(uint32_t flags) { flags_ = flags; }
 	bool hasFlag(uint32_t flag) const { return (flags_ & flag) != 0; }

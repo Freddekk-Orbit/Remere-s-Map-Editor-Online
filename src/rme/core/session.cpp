@@ -21,6 +21,7 @@ void EditorSession::newMap(int width, int height) {
 	camera_x_ = width / 2;
 	camera_y_ = height / 2;
 	floor_ = rme::MapGroundLayer;
+	inspect_ = Position(camera_x_, camera_y_, floor_);
 }
 
 bool EditorSession::loadOtbm(const std::string& path) {
@@ -35,6 +36,7 @@ bool EditorSession::loadOtbm(const std::string& path) {
 	history_.clear();
 	markMinimapDirty();
 	centerOnOccupied();
+	inspect_ = Position(camera_x_, camera_y_, floor_);
 	LoadHouseXml(map_, CompanionPath(path, map_.getHouseFilename(), "houses.xml"));
 	LoadSpawnXml(map_, CompanionPath(path, map_.getSpawnFilename(), "spawn.xml"));
 	if (!map_.houses().empty()) {
@@ -279,6 +281,7 @@ void EditorSession::fillAt(const Position& position) {
 }
 
 bool EditorSession::pickAt(const Position& position) {
+	inspect_ = position;
 	const Tile* tile = map_.getTile(position);
 	if (!tile) {
 		return false;
@@ -412,6 +415,7 @@ void EditorSession::panBy(int dx, int dy) {
 void EditorSession::goTo(int x, int y, int z) {
 	setFloor(z);
 	setCamera(x, y);
+	inspect_ = Position(camera_x_, camera_y_, floor_);
 }
 
 void EditorSession::setFloor(int floor) {
@@ -460,6 +464,7 @@ void EditorSession::centerOnOccupied() {
 	if (count > 0) {
 		setCamera(static_cast<int>(sx / count), static_cast<int>(sy / count));
 		setFloor(preferred_floor);
+		inspect_ = Position(camera_x_, camera_y_, floor_);
 	}
 }
 
@@ -651,6 +656,104 @@ bool EditorSession::addSpawnMonster(std::size_t spawn_index, std::string name, i
 	creature.spawntime = std::max(1u, spawntime);
 	map_.spawns()[spawn_index].monsters.push_back(std::move(creature));
 	map_.markChanged();
+	return true;
+}
+
+const Item* EditorSession::inspectItem() const {
+	const Tile* tile = map_.getTile(inspect_);
+	return tile ? tile->topItem() : nullptr;
+}
+
+bool EditorSession::editTopItem(const ItemProps& props) {
+	endStroke();
+	Tile* tile = map_.getTile(inspect_);
+	if (!tile || !tile->topItem()) {
+		last_error_ = "No item at inspect tile";
+		return false;
+	}
+	if (PropsFromItem(*tile->topItem()).action_id == props.action_id
+		&& PropsFromItem(*tile->topItem()).unique_id == props.unique_id
+		&& PropsFromItem(*tile->topItem()).count == (props.count == 0 ? 1 : props.count)
+		&& PropsFromItem(*tile->topItem()).charges == props.charges
+		&& PropsFromItem(*tile->topItem()).depot_id == props.depot_id
+		&& PropsFromItem(*tile->topItem()).door_id == props.door_id
+		&& PropsFromItem(*tile->topItem()).has_destination == props.has_destination
+		&& (!props.has_destination || (PropsFromItem(*tile->topItem()).destination == props.destination))
+		&& PropsFromItem(*tile->topItem()).text == props.text
+		&& PropsFromItem(*tile->topItem()).description == props.description) {
+		return false;
+	}
+
+	Action action(ActionIdentifier::Replace);
+	TileChange change;
+	change.position = inspect_;
+	change.before = tile->deepCopy();
+	change.after = tile->deepCopy();
+	Item* target = change.after.topItem();
+	ApplyPropsToItem(*target, props);
+	if (change.after.empty()) {
+		map_.removeTile(inspect_);
+	} else {
+		map_.setTile(change.after.deepCopy());
+	}
+	action.addChange(std::move(change));
+	history_.record(std::move(action));
+	last_error_.clear();
+	return true;
+}
+
+namespace {
+
+bool TileMatchesQuery(const Tile& tile, const FindQuery& query) {
+	if (tile.getGround() && ItemMatchesQuery(*tile.getGround(), query)) {
+		return true;
+	}
+	for (const Item& item : tile.getItems()) {
+		if (ItemMatchesQuery(item, query)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+bool PositionLess(const Position& a, const Position& b) {
+	if (a.z != b.z) {
+		return a.z < b.z;
+	}
+	if (a.y != b.y) {
+		return a.y < b.y;
+	}
+	return a.x < b.x;
+}
+
+} // namespace
+
+std::vector<Position> EditorSession::findTiles(const FindQuery& query) const {
+	std::vector<Position> hits;
+	if (query.empty()) {
+		return hits;
+	}
+	for (const auto& [_, tile] : map_.tiles()) {
+		if (TileMatchesQuery(tile, query)) {
+			hits.push_back(tile.getPosition());
+		}
+	}
+	std::sort(hits.begin(), hits.end(), PositionLess);
+	return hits;
+}
+
+bool EditorSession::findNext(const FindQuery& query) {
+	const auto hits = findTiles(query);
+	if (hits.empty()) {
+		last_error_ = "No matching items";
+		return false;
+	}
+	auto it = std::upper_bound(hits.begin(), hits.end(), inspect_, PositionLess);
+	if (it == hits.end()) {
+		it = hits.begin();
+	}
+	goTo(it->x, it->y, it->z);
+	last_error_.clear();
 	return true;
 }
 

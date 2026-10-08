@@ -97,6 +97,15 @@ int main() {
 	if (!center || !center->getGround() || center->getItems().size() != 1 || center->getItems().front().getID() != 105) {
 		return Fail("sample map center should have a box overlay");
 	}
+	if (center->getItems().front().getActionID() != 1000 || center->getItems().front().getUniqueID() != 2000
+		|| center->getItems().front().getText() != "Phase 7 crate") {
+		return Fail("sample crate should have AID/UID/text");
+	}
+	const auto* portal = session.map().getTile(Position(99, 102, session.floor()));
+	if (!portal || portal->getItems().empty() || !portal->getItems().front().hasDestination()
+		|| portal->getItems().front().getDestination() != Position(100, 100, rme::MapGroundLayer + 1)) {
+		return Fail("sample portal flower should teleport to the cave");
+	}
 	bool saw_pattern = false;
 	for (const auto& [_, tile] : session.map().tiles()) {
 		if (tile.getGround() && tile.getGround()->getID() > 100) {
@@ -382,8 +391,51 @@ int main() {
 		|| xml_reload.map().getTile(Position(102, 99, rme::MapGroundLayer))->getHouseID() != 1) {
 		return Fail("house tile OTBM roundtrip failed");
 	}
+	const auto* crate_reload = xml_reload.map().getTile(Position(100, 100, rme::MapGroundLayer));
+	if (!crate_reload || crate_reload->getItems().empty() || crate_reload->getItems().front().getActionID() != 1000
+		|| crate_reload->getItems().front().getUniqueID() != 2000
+		|| crate_reload->getItems().front().getText() != "Phase 7 crate") {
+		return Fail("OTBM roundtrip lost crate attributes");
+	}
+	const auto* portal_reload = xml_reload.map().getTile(Position(99, 102, rme::MapGroundLayer));
+	if (!portal_reload || portal_reload->getItems().empty() || !portal_reload->getItems().front().hasDestination()
+		|| portal_reload->getItems().front().getDestination().z != rme::MapGroundLayer + 1) {
+		return Fail("OTBM roundtrip lost teleport destination");
+	}
+	const auto* door_reload = xml_reload.map().getTile(Position(100, 100, rme::MapGroundLayer + 1));
+	if (!door_reload || door_reload->getItems().empty() || door_reload->getItems().front().getDoorID() != 1) {
+		return Fail("OTBM roundtrip lost door id");
+	}
 
-	std::printf("rme core test ok: %zu tiles, houses/spawns, cave, minimap, brushes, item 351 persisted\n",
+	session.setInspect(Position(100, 100, rme::MapGroundLayer));
+	rme::core::FindQuery find_box;
+	find_box.item_id = 105;
+	if (!session.findNext(find_box) || session.cameraX() != 100 || session.cameraY() != 100) {
+		return Fail("findNext crate should jump to 100,100");
+	}
+	rme::core::FindQuery find_aid;
+	find_aid.action_id = 7;
+	if (!session.findNext(find_aid) || session.cameraX() != 99 || session.cameraY() != 102) {
+		return Fail("findNext AID 7 should jump to the portal");
+	}
+	rme::core::FindQuery find_tp;
+	find_tp.teleports_only = true;
+	if (session.findTiles(find_tp).size() != 1) {
+		return Fail("exactly one sample teleport");
+	}
+
+	session.setInspect(Position(100, 100, rme::MapGroundLayer));
+	auto props = rme::core::PropsFromItem(*session.inspectItem());
+	props.action_id = 42;
+	if (!session.editTopItem(props) || session.map().getTile(Position(100, 100, rme::MapGroundLayer))->topItem()->getActionID() != 42) {
+		return Fail("editTopItem should set action id");
+	}
+	session.undo();
+	if (session.map().getTile(Position(100, 100, rme::MapGroundLayer))->topItem()->getActionID() != 1000) {
+		return Fail("undo should restore crate action id");
+	}
+
+	std::printf("rme core test ok: %zu tiles, item props, find, teleports, houses/spawns, brushes\n",
 		reloaded.map().tileCount());
 	return 0;
 }

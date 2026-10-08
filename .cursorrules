@@ -45,3 +45,7 @@ Port the C++ desktop Remere's Map Editor (https://github.com/opentibiabr/remeres
 - House tiles live on the OTBM (`HOUSETILE` + house id). House/spawn *lists* are classic XML beside the map (`houses.xml`, `spawn.xml`).
 - House brush is undoable tile mutation. Adding/removing house or spawn records does not go through undo.
 - Floor-below is UI-only: draw `z+1` dimmed, then the current floor. Do not store that in the map core.
+
+## Phase 7 Conventions
+- Item attributes (AID, UID, text, teleport dest, door/depot) belong on `Item` and persist through OTBM. Edit them with one undoable `editTopItem` per Apply.
+- Find/inspect is session state. ImGui must not scan the tile map itself except through `EditorSession::findTiles` / `findNext`.
