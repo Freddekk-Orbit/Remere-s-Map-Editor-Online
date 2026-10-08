@@ -3,6 +3,7 @@
 #include "action.h"
 #include "brush.h"
 #include "items_dat.h"
+#include "materials.h"
 #include "minimap.h"
 #include "otbm.h"
 #include "sprites.h"
@@ -82,6 +83,8 @@ public:
 	const ClientAssetsInfo& assets() const { return assets_; }
 	ItemDatabase& items() { return items_; }
 	const ItemDatabase& items() const { return items_; }
+	Materials& materials() { return materials_; }
+	const Materials& materials() const { return materials_; }
 	SpriteSheet& sprites() { return sprites_; }
 	const SpriteSheet& sprites() const { return sprites_; }
 	ActionQueue& history() { return history_; }
@@ -96,6 +99,7 @@ public:
 	bool loadSpr(const std::string& path);
 	bool loadHouseXml(const std::string& path);
 	bool loadSpawnXml(const std::string& path);
+	bool loadMaterials(const std::string& path);
 	bool createSampleMap(const std::string& path);
 	bool createSampleAssets(const std::string& dat_path, const std::string& spr_path);
 
@@ -131,7 +135,7 @@ public:
 	void setCamera(int x, int y);
 	void panBy(int dx, int dy);
 	void setFloor(int floor);
-	void setBrushId(uint16_t id) { brush_id_ = id; }
+	void setBrushId(uint16_t id);
 	void setBrushSize(int size);
 	void setBrushKind(BrushKind kind) { brush_kind_ = kind; }
 	void setFlagMask(uint32_t mask) { flag_mask_ = mask == 0 ? TILESTATE_PROTECTIONZONE : mask; }
@@ -186,12 +190,15 @@ private:
 	bool applyLive(const Position& position, BrushKind kind, uint16_t item_id, Action& action, bool invert = false);
 	void clampInspectIndex();
 	bool recordInspectTile(Tile after);
+	bool writeTileAfter(Action& action, const Position& position, Tile after);
+	void strokeWallAt(const Position& position, bool invert);
 
 	Map map_;
 	ActionQueue history_;
 	ClientAssetsInfo assets_;
 	ItemDatabase items_;
 	SpriteSheet sprites_;
+	Materials materials_;
 	Minimap minimap_;
 	bool minimap_dirty_ = true;
 	Selection selection_;

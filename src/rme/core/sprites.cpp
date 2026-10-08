@@ -118,6 +118,28 @@ std::vector<uint8_t> MakePatternedSprite(uint32_t id) {
 					}
 					break;
 				}
+				case 7:
+				case 8:
+				case 9:
+				case 10: { // timber pole / h / v / junction
+					const bool hbeam = (id == 8 || id == 10) && y >= 12 && y <= 19;
+					const bool vbeam = (id == 9 || id == 10) && x >= 12 && x <= 19;
+					const bool pole = id == 7 && x >= 11 && x <= 20 && y >= 11 && y <= 20;
+					if (hbeam || vbeam || pole) {
+						const bool grain = ((x + y) % 5) == 0;
+						const bool edge = (hbeam && (y == 12 || y == 19)) || (vbeam && (x == 12 || x == 19))
+							|| (pole && (x == 11 || x == 20 || y == 11 || y == 20));
+						r = edge ? 92 : (grain ? 168 : 150);
+						g = edge ? 62 : (grain ? 112 : 96);
+						b = edge ? 28 : (grain ? 54 : 42);
+					} else {
+						a = 0;
+						r = 255;
+						g = 0;
+						b = 255;
+					}
+					break;
+				}
 				default:
 					r = static_cast<uint8_t>(40 + (id * 37) % 140);
 					g = static_cast<uint8_t>(70 + (id * 17) % 120);
@@ -312,7 +334,7 @@ bool SpriteSheet::writeSample(const std::string& path) {
 	}
 
 	constexpr uint32_t kSampleSignature = 0x00008600;
-	constexpr uint16_t kCount = 6;
+	constexpr uint16_t kCount = 10;
 
 	clear();
 	count_ = kCount;

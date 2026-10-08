@@ -526,7 +526,7 @@ bool SaveOTBM(const Map& map, const std::string& path) {
 bool WriteSampleOTBM(const std::string& path) {
 	Map map;
 	map.createEmpty(256, 256, "sample.otbm");
-	map.setDescription("RME Wasm Phase 8 sample map (browse tile, containers, map issues)");
+	map.setDescription("RME Wasm Phase 9 sample map (tilesets, wall auto-connect)");
 	map.setHouseFilename("houses.xml");
 	map.setSpawnFilename("spawn.xml");
 
@@ -585,6 +585,12 @@ bool WriteSampleOTBM(const std::string& path) {
 				Item cover(104);
 				cover.setActionID(8);
 				tile.addItem(std::move(cover));
+			} else if (x == 100 && y == 98) {
+				tile.addItem(Item(107));
+			} else if (x == 101 && y == 98) {
+				tile.addItem(Item(109));
+			} else if (x == 101 && y == 99) {
+				tile.addItem(Item(108));
 			} else if (x == 99 && y == 102) {
 				Item portal(104);
 				portal.setActionID(7);

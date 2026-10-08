@@ -31,6 +31,18 @@ void ApplyBuiltinName(ItemType& type) {
 		case 105:
 			type.name = "Box";
 			break;
+		case 106:
+			type.name = "Wall pole";
+			break;
+		case 107:
+			type.name = "Wall h";
+			break;
+		case 108:
+			type.name = "Wall v";
+			break;
+		case 109:
+			type.name = "Wall join";
+			break;
 		default:
 			type.name = "Item " + std::to_string(type.id);
 			break;
@@ -173,6 +185,16 @@ ItemType MakeSampleItem(uint16_t id) {
 			type.container = true;
 			type.pickupable = true;
 			type.sprite_id = 6;
+			break;
+		case 106:
+		case 107:
+		case 108:
+		case 109:
+			type.not_walkable = true;
+			type.not_moveable = true;
+			type.block_projectile = true;
+			type.minimap_color = 86;
+			type.sprite_id = static_cast<uint16_t>(id - 99);
 			break;
 		default:
 			type.sprite_id = 1;
@@ -394,7 +416,7 @@ bool ItemDatabase::writeSample(const std::string& path) {
 	}
 
 	constexpr uint32_t kSampleSignature = 0x00008600;
-	constexpr uint16_t kMaxItem = 105;
+	constexpr uint16_t kMaxItem = 109;
 	file.addU32(kSampleSignature);
 	file.addU16(kMaxItem);
 	file.addU16(0);

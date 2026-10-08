@@ -53,3 +53,8 @@ Port the C++ desktop Remere's Map Editor (https://github.com/opentibiabr/remeres
 ## Phase 8 Conventions
 - Tile stack browse, overlay reorder, and container contents belong on `EditorSession` (`browseInspect`, `moveInspectItem`, `addContainerItem`). ImGui only lists the current inspect tile.
 - Map issues are computed in the core (`mapIssues`). Do not walk `map().tiles()` from ImGui.
+
+## Phase 9 Conventions
+- Tilesets and wall families live in `src/rme/core` (`materials.xml` via `Materials`). ImGui only lists tilesets and sends wall strokes.
+- Wall auto-connect uses a 4-neighbor mask (N=1 E=2 S=4 W=8) mapped from pole/horizontal/vertical/junction. Restitch painted cells and neighbors in one stroke.
+- Auto on a wall item resolves to Wall. Shift+wall removes the family then restitches. Cave wall 103 stays out of the timber set.

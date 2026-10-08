@@ -79,6 +79,19 @@ bool EditorSession::loadDat(const std::string& path) {
 		last_error_ = assets_.error.empty() ? "Failed to read .dat" : assets_.error;
 		return false;
 	}
+	const auto materials_path = std::filesystem::path(path).parent_path() / "materials.xml";
+	if (!materials_.load(materials_path.string())) {
+		materials_.ensureDefaults();
+	}
+	last_error_.clear();
+	return true;
+}
+
+bool EditorSession::loadMaterials(const std::string& path) {
+	if (!materials_.load(path)) {
+		last_error_ = materials_.lastError().empty() ? "Failed to read materials.xml" : materials_.lastError();
+		return false;
+	}
 	last_error_.clear();
 	return true;
 }
@@ -140,6 +153,11 @@ bool EditorSession::createSampleAssets(const std::string& dat_path, const std::s
 		last_error_ = "Could not write sample Tibia.spr";
 		return false;
 	}
+	const auto materials_path = (std::filesystem::path(dat_path).parent_path() / "materials.xml").string();
+	if (!materials_.writeSample(materials_path)) {
+		last_error_ = materials_.lastError().empty() ? "Could not write materials.xml" : materials_.lastError();
+		return false;
+	}
 	if (!loadDat(dat_path) || !loadSpr(spr_path)) {
 		return false;
 	}
@@ -180,7 +198,14 @@ void EditorSession::eraseTile(const Position& position) {
 }
 
 BrushKind EditorSession::resolvedBrush() const {
+	if (brush_kind_ == BrushKind::Auto && materials_.wallForItem(brush_id_)) {
+		return BrushKind::Wall;
+	}
 	return ResolveBrush(brush_kind_, items_.get(brush_id_));
+}
+
+void EditorSession::setBrushId(uint16_t id) {
+	brush_id_ = id;
 }
 
 void EditorSession::setBrushSize(int size) {
@@ -236,14 +261,160 @@ bool EditorSession::applyLive(const Position& position, BrushKind kind, uint16_t
 	return true;
 }
 
+namespace {
+
+bool TileLooksEqual(const Tile& a, const Tile& b) {
+	if (a.getHouseID() != b.getHouseID() || a.getFlags() != b.getFlags()) {
+		return false;
+	}
+	if (a.hasGround() != b.hasGround()) {
+		return false;
+	}
+	if (a.hasGround() && a.getGround()->getID() != b.getGround()->getID()) {
+		return false;
+	}
+	if (a.getItems().size() != b.getItems().size()) {
+		return false;
+	}
+	for (std::size_t i = 0; i < a.getItems().size(); ++i) {
+		if (a.getItems()[i].getID() != b.getItems()[i].getID()) {
+			return false;
+		}
+	}
+	return true;
+}
+
+} // namespace
+
+bool EditorSession::writeTileAfter(Action& action, const Position& position, Tile after) {
+	after.setPosition(position);
+	for (auto it = action.changes().begin(); it != action.changes().end(); ++it) {
+		if (!(it->position == position)) {
+			continue;
+		}
+		it->after = after.deepCopy();
+		if (TileLooksEqual(it->before, it->after)) {
+			if (it->before.empty()) {
+				map_.removeTile(position);
+			} else {
+				map_.setTile(it->before.deepCopy());
+			}
+			action.changes().erase(it);
+			markMinimapDirty();
+			return false;
+		}
+		if (after.empty()) {
+			map_.removeTile(position);
+		} else {
+			map_.setTile(after.deepCopy());
+		}
+		markMinimapDirty();
+		return true;
+	}
+
+	TileChange change;
+	change.position = position;
+	if (const Tile* existing = map_.getTile(position)) {
+		change.before = existing->deepCopy();
+	} else {
+		change.before.setPosition(position);
+	}
+	change.after = after.deepCopy();
+	if (TileLooksEqual(change.before, change.after)) {
+		return false;
+	}
+	if (after.empty()) {
+		map_.removeTile(position);
+	} else {
+		map_.setTile(after.deepCopy());
+	}
+	action.addChange(std::move(change));
+	markMinimapDirty();
+	return true;
+}
+
+void EditorSession::strokeWallAt(const Position& position, bool invert) {
+	const WallSet* set = materials_.wallForItem(brush_id_);
+	if (!set) {
+		last_error_ = "Wall brush needs a wall item from materials.xml";
+		return;
+	}
+	last_error_.clear();
+
+	std::vector<Position> seeds;
+	for (const Position& cell : BrushFootprint(position, brush_size_, map_.getWidth(), map_.getHeight())) {
+		seeds.push_back(cell);
+		const uint64_t key = MakeTileKey(cell.x, cell.y, cell.z);
+		if (stroke_seen_.count(key)) {
+			continue;
+		}
+		stroke_seen_.insert(key);
+
+		Tile after;
+		if (const Tile* existing = map_.getTile(cell)) {
+			after = existing->deepCopy();
+		} else {
+			after.setPosition(cell);
+		}
+		after.setPosition(cell);
+
+		bool changed = false;
+		if (invert) {
+			changed = RemoveWallFromTile(after, *set);
+		} else if (!TileHasWall(after, *set)) {
+			changed = ApplyWallToTile(after, set->pieceFor(0), *set);
+		}
+		if (changed) {
+			writeTileAfter(stroke_, cell, std::move(after));
+		}
+	}
+
+	auto restitchCell = [&](const Position& cell) {
+		if (!map_.inBounds(cell)) {
+			return;
+		}
+		const Tile* tile = map_.getTile(cell);
+		if (!tile || !TileHasWall(*tile, *set)) {
+			return;
+		}
+		Tile after = tile->deepCopy();
+		const uint16_t piece = ResolveWallPiece(map_, cell, *set);
+		if (ApplyWallToTile(after, piece, *set)) {
+			writeTileAfter(stroke_, cell, std::move(after));
+		}
+	};
+
+	constexpr int kDx[4] = {0, 1, 0, -1};
+	constexpr int kDy[4] = {-1, 0, 1, 0};
+	std::unordered_set<uint64_t> restitched;
+	for (const Position& cell : seeds) {
+		const uint64_t key = MakeTileKey(cell.x, cell.y, cell.z);
+		if (restitched.insert(key).second) {
+			restitchCell(cell);
+		}
+		for (int i = 0; i < 4; ++i) {
+			const Position neighbor(cell.x + kDx[i], cell.y + kDy[i], cell.z);
+			const uint64_t nkey = MakeTileKey(neighbor.x, neighbor.y, neighbor.z);
+			if (restitched.insert(nkey).second) {
+				restitchCell(neighbor);
+			}
+		}
+	}
+}
+
 void EditorSession::strokeAt(const Position& position, bool invert) {
 	if (!stroking_) {
 		beginStroke();
 	}
-	const BrushKind kind = invert && brush_kind_ != BrushKind::Flags && brush_kind_ != BrushKind::House
-		? BrushKind::Eraser
-		: resolvedBrush();
+	BrushKind kind = resolvedBrush();
+	if (invert && kind != BrushKind::Flags && kind != BrushKind::House && kind != BrushKind::Wall) {
+		kind = BrushKind::Eraser;
+	}
 	if (kind == BrushKind::Fill || kind == BrushKind::Select) {
+		return;
+	}
+	if (kind == BrushKind::Wall) {
+		strokeWallAt(position, invert);
 		return;
 	}
 	if (kind == BrushKind::House && house_id_ == 0) {
