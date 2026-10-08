@@ -118,6 +118,32 @@ std::vector<uint8_t> MakePatternedSprite(uint32_t id) {
 					}
 					break;
 				}
+				case 11:
+				case 12:
+				case 13:
+				case 14:
+				case 15:
+				case 16:
+				case 17:
+				case 18: { // water shores: N E S W / NE SE SW NW
+					const bool n = id == 11 || id == 15 || id == 18;
+					const bool e = id == 12 || id == 15 || id == 16;
+					const bool s = id == 13 || id == 16 || id == 17;
+					const bool w = id == 14 || id == 17 || id == 18;
+					const bool band = (n && y < 8) || (e && x >= 24) || (s && y >= 24) || (w && x < 8);
+					if (band) {
+						const bool foam = ((x + y) % 4) == 0;
+						r = foam ? 236 : 198;
+						g = foam ? 214 : 168;
+						b = foam ? 126 : 88;
+					} else {
+						a = 0;
+						r = 255;
+						g = 0;
+						b = 255;
+					}
+					break;
+				}
 				case 7:
 				case 8:
 				case 9:
@@ -334,7 +360,7 @@ bool SpriteSheet::writeSample(const std::string& path) {
 	}
 
 	constexpr uint32_t kSampleSignature = 0x00008600;
-	constexpr uint16_t kCount = 10;
+	constexpr uint16_t kCount = 18;
 
 	clear();
 	count_ = kCount;

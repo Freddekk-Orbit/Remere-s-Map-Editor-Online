@@ -198,6 +198,9 @@ void EditorSession::eraseTile(const Position& position) {
 }
 
 BrushKind EditorSession::resolvedBrush() const {
+	if (brush_kind_ == BrushKind::Auto && materials_.borderForItem(brush_id_)) {
+		return BrushKind::Border;
+	}
 	if (brush_kind_ == BrushKind::Auto && materials_.wallForItem(brush_id_)) {
 		return BrushKind::Wall;
 	}
@@ -402,12 +405,88 @@ void EditorSession::strokeWallAt(const Position& position, bool invert) {
 	}
 }
 
+void EditorSession::restitchBorders(Action& action, const GroundBorderSet& set, const std::vector<Position>& seeds) {
+	constexpr int kDx[4] = {0, 1, 0, -1};
+	constexpr int kDy[4] = {-1, 0, 1, 0};
+	std::unordered_set<uint64_t> seen;
+	auto restitchCell = [&](const Position& cell) {
+		if (!map_.inBounds(cell)) {
+			return;
+		}
+		const Tile* tile = map_.getTile(cell);
+		if (!tile) {
+			return;
+		}
+		Tile after = tile->deepCopy();
+		if (ApplyBordersToTile(after, map_, set)) {
+			writeTileAfter(action, cell, std::move(after));
+		}
+	};
+	for (const Position& cell : seeds) {
+		const uint64_t key = MakeTileKey(cell.x, cell.y, cell.z);
+		if (seen.insert(key).second) {
+			restitchCell(cell);
+		}
+		for (int i = 0; i < 4; ++i) {
+			const Position neighbor(cell.x + kDx[i], cell.y + kDy[i], cell.z);
+			const uint64_t nkey = MakeTileKey(neighbor.x, neighbor.y, neighbor.z);
+			if (seen.insert(nkey).second) {
+				restitchCell(neighbor);
+			}
+		}
+	}
+}
+
+void EditorSession::strokeBorderAt(const Position& position, bool invert) {
+	const GroundBorderSet* set = materials_.borderForItem(brush_id_);
+	if (!set) {
+		last_error_ = "Border brush needs a ground from materials.xml";
+		return;
+	}
+	last_error_.clear();
+
+	std::vector<Position> seeds;
+	for (const Position& cell : BrushFootprint(position, brush_size_, map_.getWidth(), map_.getHeight())) {
+		seeds.push_back(cell);
+		const uint64_t key = MakeTileKey(cell.x, cell.y, cell.z);
+		if (stroke_seen_.count(key)) {
+			continue;
+		}
+		stroke_seen_.insert(key);
+
+		Tile after;
+		if (const Tile* existing = map_.getTile(cell)) {
+			after = existing->deepCopy();
+		} else {
+			after.setPosition(cell);
+		}
+		after.setPosition(cell);
+
+		bool changed = false;
+		if (invert) {
+			changed = RemoveBordersFromTile(after, *set);
+			if (TileHasInnerGround(after, *set)) {
+				after.clearGround();
+				changed = true;
+			}
+		} else if (!TileHasInnerGround(after, *set)) {
+			after.setGround(Item(set->inner_id));
+			changed = true;
+		}
+		if (changed) {
+			writeTileAfter(stroke_, cell, std::move(after));
+		}
+	}
+	restitchBorders(stroke_, *set, seeds);
+}
+
 void EditorSession::strokeAt(const Position& position, bool invert) {
 	if (!stroking_) {
 		beginStroke();
 	}
 	BrushKind kind = resolvedBrush();
-	if (invert && kind != BrushKind::Flags && kind != BrushKind::House && kind != BrushKind::Wall) {
+	if (invert && kind != BrushKind::Flags && kind != BrushKind::House && kind != BrushKind::Wall
+		&& kind != BrushKind::Border) {
 		kind = BrushKind::Eraser;
 	}
 	if (kind == BrushKind::Fill || kind == BrushKind::Select) {
@@ -415,6 +494,10 @@ void EditorSession::strokeAt(const Position& position, bool invert) {
 	}
 	if (kind == BrushKind::Wall) {
 		strokeWallAt(position, invert);
+		return;
+	}
+	if (kind == BrushKind::Border) {
+		strokeBorderAt(position, invert);
 		return;
 	}
 	if (kind == BrushKind::House && house_id_ == 0) {
@@ -445,8 +528,19 @@ void EditorSession::endStroke() {
 void EditorSession::fillAt(const Position& position) {
 	endStroke();
 	Action action(ActionIdentifier::Fill);
+	uint16_t fill_id = brush_id_;
+	const GroundBorderSet* borders = materials_.borderForItem(brush_id_);
+	if (borders) {
+		fill_id = borders->inner_id;
+	}
+	std::vector<Position> seeds;
 	for (const Position& cell : FloodGround(map_, position)) {
-		applyLive(cell, BrushKind::Ground, brush_id_, action);
+		if (applyLive(cell, BrushKind::Ground, fill_id, action)) {
+			seeds.push_back(cell);
+		}
+	}
+	if (borders && !seeds.empty()) {
+		restitchBorders(action, *borders, seeds);
 	}
 	if (action.changes().empty()) {
 		last_error_ = "Fill did not change any tiles (need connected ground with a different brush id)";

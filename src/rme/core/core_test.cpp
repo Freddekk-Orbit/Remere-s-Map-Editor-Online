@@ -34,8 +34,8 @@ int main() {
 		std::fprintf(stderr, "createSampleAssets failed: %s\n", session.lastError().c_str());
 		return 1;
 	}
-	if (!session.assets().dat_loaded || session.items().size() != 10) {
-		return Fail("expected 10 sample items (100-109)");
+	if (!session.assets().dat_loaded || session.items().size() != 18) {
+		return Fail("expected 18 sample items (100-117)");
 	}
 	const auto* grass = session.items().get(100);
 	const auto* water = session.items().get(102);
@@ -53,9 +53,9 @@ int main() {
 	if (!box || !box->container || !box->pickupable) {
 		return Fail("item 105 should be a pickupable container");
 	}
-	if (session.sprites().count() != 10 || !session.sprites().get(1) || session.sprites().get(1)->empty()
-		|| !session.sprites().get(10) || session.sprites().get(10)->empty()) {
-		return Fail("sample .spr should decode sprites 1-10");
+	if (session.sprites().count() != 18 || !session.sprites().get(1) || session.sprites().get(1)->empty()
+		|| !session.sprites().get(18) || session.sprites().get(18)->empty()) {
+		return Fail("sample .spr should decode sprites 1-18");
 	}
 
 	const auto* grass_sprite = session.sprites().get(1);
@@ -79,7 +79,7 @@ int main() {
 
 	ItemDatabase reloaded_items;
 	rme::core::ClientAssetsInfo info;
-	if (!reloaded_items.load(dat_path, info) || reloaded_items.size() != 10) {
+	if (!reloaded_items.load(dat_path, info) || reloaded_items.size() != 18) {
 		return Fail("dat reload failed");
 	}
 	if (!reloaded_items.get(104) || !reloaded_items.get(104)->pickupable || reloaded_items.get(104)->sprite_id != 5) {
@@ -124,8 +124,9 @@ int main() {
 		return Fail("sample map should use more than item 100");
 	}
 
-	if (session.materials().tilesets().size() != 3 || session.materials().walls().size() != 1) {
-		return Fail("sample materials should load Grounds/Walls/Items and Timber");
+	if (session.materials().tilesets().size() != 4 || session.materials().walls().size() != 1
+		|| session.materials().borders().size() != 1) {
+		return Fail("sample materials should load Grounds/Borders/Walls/Items, Timber, and Water shores");
 	}
 	if (!session.materials().wallForItem(106) || !session.materials().wallForItem(109)
 		|| session.materials().wallForItem(103) != nullptr) {
@@ -140,8 +141,29 @@ int main() {
 	if (!sample_join || sample_join->getItems().empty() || sample_join->getItems().front().getID() != 109) {
 		return Fail("sample L-wall corner at 101,98 should be a junction");
 	}
-	if (!sample_v || sample_v->getItems().empty() || sample_v->getItems().front().getID() != 108) {
+	const auto tile_has = [](const rme::core::Tile* tile, uint16_t id) {
+		if (!tile) {
+			return false;
+		}
+		for (const auto& item : tile->getItems()) {
+			if (item.getID() == id) {
+				return true;
+			}
+		}
+		return false;
+	};
+	if (!sample_v || !tile_has(sample_v, 108)) {
 		return Fail("sample L-wall should drop a vertical piece at 101,99");
+	}
+
+	const auto* shore_nw = session.map().getTile(Position(99, 99, session.floor()));
+	const auto* shore_n = session.map().getTile(Position(100, 99, session.floor()));
+	const auto* shore_center = session.map().getTile(Position(100, 100, session.floor()));
+	if (!tile_has(shore_nw, 117) || !tile_has(shore_n, 110) || !tile_has(sample_v, 114)) {
+		return Fail("sample 3x3 water should have shore corners and a north edge");
+	}
+	if (tile_has(shore_center, 110) || tile_has(shore_center, 114) || tile_has(shore_center, 117)) {
+		return Fail("inner water tile should not keep a shore overlay");
 	}
 
 	const Position paint_pos(101, 101, session.floor());
@@ -186,7 +208,7 @@ int main() {
 		return Fail("brush fixture failed");
 	}
 
-	const Position overlay_pos(99, 99, tools.floor());
+	const Position overlay_pos(98, 99, tools.floor());
 	const uint16_t overlay_ground = tools.map().getTile(overlay_pos) && tools.map().getTile(overlay_pos)->getGround()
 		? tools.map().getTile(overlay_pos)->getGround()->getID()
 		: 100;
@@ -586,7 +608,66 @@ int main() {
 		return Fail("undo wall erase should restore the line");
 	}
 
-	std::printf("rme core test ok: %zu tiles, walls/tilesets, browse/containers, map issues\n",
+	tools.setBrushKind(rme::core::BrushKind::Auto);
+	tools.setBrushSize(1);
+	tools.setBrushId(102);
+	if (tools.resolvedBrush() != rme::core::BrushKind::Border) {
+		return Fail("auto brush on water should resolve to Border");
+	}
+
+	const auto shore_id = [](const rme::core::Tile* tile) -> uint16_t {
+		if (!tile) {
+			return 0;
+		}
+		for (const auto& item : tile->getItems()) {
+			if (item.getID() >= 110 && item.getID() <= 117) {
+				return item.getID();
+			}
+		}
+		return 0;
+	};
+
+	tools.beginStroke();
+	tools.strokeAt(Position(150, 150, z));
+	tools.strokeAt(Position(151, 150, z));
+	tools.strokeAt(Position(150, 151, z));
+	tools.strokeAt(Position(151, 151, z));
+	tools.endStroke();
+	if (shore_id(tools.map().getTile(Position(150, 150, z))) != 117
+		|| shore_id(tools.map().getTile(Position(151, 150, z))) != 114
+		|| shore_id(tools.map().getTile(Position(150, 151, z))) != 116
+		|| shore_id(tools.map().getTile(Position(151, 151, z))) != 115) {
+		return Fail("a 2x2 water pond should get four outer-corner shores");
+	}
+
+	tools.beginStroke();
+	tools.strokeAt(Position(152, 150, z));
+	tools.endStroke();
+	if (shore_id(tools.map().getTile(Position(151, 150, z))) != 110) {
+		return Fail("extending the north shore should restitch the middle to edge 110");
+	}
+	if (shore_id(tools.map().getTile(Position(152, 150, z))) != 114) {
+		return Fail("new north-east water should be a NE shore");
+	}
+
+	if (!tools.undo() || shore_id(tools.map().getTile(Position(151, 150, z))) != 114
+		|| tools.map().getTile(Position(152, 150, z))) {
+		return Fail("undo border stroke should restore the 2x2 pond");
+	}
+
+	tools.beginStroke();
+	tools.strokeAt(Position(151, 150, z), true);
+	tools.endStroke();
+	if (tools.map().getTile(Position(151, 150, z))
+		&& tools.map().getTile(Position(151, 150, z))->hasGround()
+		&& tools.map().getTile(Position(151, 150, z))->getGround()->getID() == 102) {
+		return Fail("shift+border should remove the water ground");
+	}
+	if (shore_id(tools.map().getTile(Position(150, 150, z))) != 114) {
+		return Fail("removing the NE pond tile should restitch 150,150 to a NE shore");
+	}
+
+	std::printf("rme core test ok: %zu tiles, borders/walls/tilesets, browse/containers, map issues\n",
 		reloaded.map().tileCount());
 	return 0;
 }
