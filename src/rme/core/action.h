@@ -34,6 +34,7 @@ public:
 		type_(type) { }
 
 	void addChange(TileChange change) { changes_.push_back(std::move(change)); }
+	std::vector<TileChange>& changes() { return changes_; }
 	const std::vector<TileChange>& changes() const { return changes_; }
 	ActionIdentifier type() const { return type_; }
 

@@ -23,6 +23,7 @@
 #include <cstring>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -301,7 +302,7 @@ private:
 				ImGui::EndMenu();
 			}
 			if (ImGui::BeginMenu("Help")) {
-				ImGui::MenuItem("About Phase 8", nullptr, &show_about_);
+				ImGui::MenuItem("About Phase 9", nullptr, &show_about_);
 				ImGui::EndMenu();
 			}
 			ImGui::SameLine(ImGui::GetWindowWidth() - 220.0f);
@@ -429,15 +430,15 @@ private:
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 16.0f, viewport->WorkPos.y + 28.0f), ImGuiCond_FirstUseEver);
 		ImGui::SetNextWindowSize(ImVec2(460.0f, 240.0f), ImGuiCond_FirstUseEver);
-		if (!ImGui::Begin("RME Wasm - Phase 8", nullptr, ImGuiWindowFlags_NoCollapse)) {
+		if (!ImGui::Begin("RME Wasm - Phase 9", nullptr, ImGuiWindowFlags_NoCollapse)) {
 			ImGui::End();
 			return;
 		}
 
 		ImGui::TextWrapped(
-			"Browse the tile stack in Tile properties (right-click). Containers hold nested items; "
-			"Map issues lists duplicate UIDs and empty teleports. The crate at 100,100 has loot inside "
-			"and a flower on top. Ctrl+E opens issues."
+			"Tilesets group the item palette (materials.xml). Timber walls auto-connect: pick a wall "
+			"piece or the Wall tool and drag a line. Shift+click removes the wall family and restitches "
+			"neighbors. Sample L-wall: 100,98 / 101,98 / 101,99."
 		);
 		ImGui::Separator();
 		ImGui::Text("Map: %s  %dx%d  tiles=%zu  items=%zu",
@@ -475,9 +476,9 @@ private:
 		ImGui::TextUnformatted("Remere's Map Editor - WebAssembly port");
 		ImGui::Separator();
 		ImGui::TextWrapped(
-			"Phase 8 adds browse-tile (select/reorder/remove stack items), container contents, and a map "
-			"issue list (duplicate unique ids, teleports to empty tiles). Nested OTBM items already loaded; "
-			"the editor can now change them."
+			"Phase 9 adds materials.xml tilesets and a wall brush that auto-connects timber pieces from "
+			"neighbor masks (pole / horizontal / vertical / junction). Auto on a wall item becomes Wall. "
+			"Drag strokes stay one undo action, including neighbor restitch."
 		);
 		ImGui::Spacing();
 		ImGui::BulletText("UI: Dear ImGui (SDL2 + OpenGL ES 3.0 / WebGL2)");
@@ -570,13 +571,17 @@ private:
 				session_.loadSpr(file.vfs_path);
 				ReloadAtlas();
 				break;
-			case rme::wasm::AssetKind::Xml:
-				if (file.name.find("spawn") != std::string::npos) {
+			case rme::wasm::AssetKind::Xml: {
+				const auto& name = file.name;
+				if (name.find("spawn") != std::string::npos) {
 					session_.loadSpawnXml(file.vfs_path);
+				} else if (name.find("material") != std::string::npos) {
+					session_.loadMaterials(file.vfs_path);
 				} else {
 					session_.loadHouseXml(file.vfs_path);
 				}
 				break;
+			}
 			default:
 				break;
 		}
@@ -1239,7 +1244,7 @@ private:
 		}
 		ImGui::SliderFloat("Zoom", &zoom_, 0.5f, 2.5f, "%.2f");
 		ImGui::Checkbox("Floor below", &show_floor_below_);
-		ImGui::TextDisabled("LMB paints. Shift erases/clears flags or house. RMB inspects. MMB pan. Wheel zoom. WASD pan. Ctrl+G goto. Ctrl+F find.");
+		ImGui::TextDisabled("LMB paints. Shift erases/clears flags, house, or walls. RMB inspects. MMB pan. Wheel zoom. WASD pan. Ctrl+G goto. Ctrl+F find.");
 
 		const float tile_px = 32.0f * zoom_;
 		const ImVec2 avail = ImGui::GetContentRegionAvail();
@@ -1498,10 +1503,11 @@ private:
 			rme::core::BrushKind::Select,
 			rme::core::BrushKind::Flags,
 			rme::core::BrushKind::House,
+			rme::core::BrushKind::Wall,
 		};
-		for (int i = 0; i < 8; ++i) {
-			if (i == 4) {
-				// Second row: Fill / Select / Flags / House
+		for (int i = 0; i < 9; ++i) {
+			if (i == 5) {
+				// Second row: Select / Flags / House / Wall
 			} else if (i > 0) {
 				ImGui::SameLine();
 			}
@@ -1560,6 +1566,7 @@ private:
 		ImGui::TextDisabled("Fill replaces 4-connected tiles with the same ground id.");
 		ImGui::TextDisabled("Flags paints PZ/PvP bits (green overlay). Shift+click clears.");
 		ImGui::TextDisabled("House paints magenta house tiles for the selected house id.");
+		ImGui::TextDisabled("Wall auto-connects timber pieces. Shift+click removes the family.");
 		ImGui::TextDisabled("[ ] change size. Del deletes. Ctrl+C / X / V clipboard.");
 		ImGui::End();
 	}
@@ -1574,39 +1581,72 @@ private:
 		}
 
 		ImGui::Text("%zu items  |  brush %u", session_.items().size(), session_.brushId());
+		const auto& tilesets = session_.materials().tilesets();
+		if (!tilesets.empty()) {
+			if (palette_tileset_ < 0 || palette_tileset_ >= static_cast<int>(tilesets.size())) {
+				palette_tileset_ = 0;
+			}
+			if (ImGui::BeginCombo("Tileset", tilesets[static_cast<std::size_t>(palette_tileset_)].name.c_str())) {
+				for (int i = 0; i < static_cast<int>(tilesets.size()); ++i) {
+					const bool selected = i == palette_tileset_;
+					if (ImGui::Selectable(tilesets[static_cast<std::size_t>(i)].name.c_str(), selected)) {
+						palette_tileset_ = i;
+					}
+					if (selected) {
+						ImGui::SetItemDefaultFocus();
+					}
+				}
+				ImGui::EndCombo();
+			}
+		}
 		ImGui::Separator();
+
+		std::vector<uint16_t> ids;
+		if (!tilesets.empty()) {
+			ids = tilesets[static_cast<std::size_t>(palette_tileset_)].items;
+		} else {
+			for (const auto& type : session_.items().items()) {
+				ids.push_back(type.id);
+			}
+		}
 
 		const float cell = 40.0f;
 		const float spacing = 6.0f;
 		const float avail = ImGui::GetContentRegionAvail().x;
 		const int columns = std::max(1, static_cast<int>((avail + spacing) / (cell + spacing)));
 		int index = 0;
-		for (const auto& type : session_.items().items()) {
+		for (uint16_t id : ids) {
+			const auto* type = session_.items().get(id);
+			if (!type) {
+				continue;
+			}
 			if (index % columns != 0) {
 				ImGui::SameLine(0.0f, spacing);
 			}
-			ImGui::PushID(type.id);
+			ImGui::PushID(type->id);
 			const ImVec2 p0 = ImGui::GetCursorScreenPos();
 			const ImVec2 p1(p0.x + cell, p0.y + cell);
 			if (ImGui::InvisibleButton("item", ImVec2(cell, cell))) {
-				session_.setBrushId(type.id);
+				session_.setBrushId(type->id);
 			}
 			ImDrawList* draw = ImGui::GetWindowDrawList();
 			draw->AddRectFilled(p0, p1, IM_COL32(18, 20, 22, 255));
-			DrawSprite(draw, p0, p1, type.sprite_id, FallbackColor(type.id));
-			if (type.id == session_.brushId()) {
+			DrawSprite(draw, p0, p1, type->sprite_id, FallbackColor(type->id));
+			if (type->id == session_.brushId()) {
 				draw->AddRect(p0, p1, IM_COL32(250, 230, 80, 255), 0.0f, 0, 2.0f);
 			} else if (ImGui::IsItemHovered()) {
 				draw->AddRect(p0, p1, IM_COL32(220, 220, 220, 180));
 			}
 			if (ImGui::IsItemHovered()) {
-				ImGui::SetTooltip("%u %s\nsprite %u%s%s%s",
-					type.id,
-					type.name.c_str(),
-					type.sprite_id,
-					type.ground ? "\nground" : "",
-					type.not_walkable ? "\nnot walkable" : "",
-					type.pickupable ? "\npickupable" : "");
+				const bool is_wall = session_.materials().wallForItem(type->id) != nullptr;
+				ImGui::SetTooltip("%u %s\nsprite %u%s%s%s%s",
+					type->id,
+					type->name.c_str(),
+					type->sprite_id,
+					type->ground ? "\nground" : "",
+					type->not_walkable ? "\nnot walkable" : "",
+					type->pickupable ? "\npickupable" : "",
+					is_wall ? "\nwall set" : "");
 			}
 			ImGui::PopID();
 			++index;
@@ -1649,6 +1689,7 @@ private:
 	bool show_find_ = true;
 	bool show_issues_ = true;
 	bool show_floor_below_ = true;
+	int palette_tileset_ = 0;
 	bool follow_camera_ = false;
 	float zoom_ = 1.0f;
 	bool panning_ = false;

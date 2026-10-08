@@ -34,8 +34,8 @@ int main() {
 		std::fprintf(stderr, "createSampleAssets failed: %s\n", session.lastError().c_str());
 		return 1;
 	}
-	if (!session.assets().dat_loaded || session.items().size() != 6) {
-		return Fail("expected 6 sample items (100-105)");
+	if (!session.assets().dat_loaded || session.items().size() != 10) {
+		return Fail("expected 10 sample items (100-109)");
 	}
 	const auto* grass = session.items().get(100);
 	const auto* water = session.items().get(102);
@@ -53,8 +53,9 @@ int main() {
 	if (!box || !box->container || !box->pickupable) {
 		return Fail("item 105 should be a pickupable container");
 	}
-	if (session.sprites().count() != 6 || !session.sprites().get(1) || session.sprites().get(1)->empty()) {
-		return Fail("sample .spr should decode sprites 1-6");
+	if (session.sprites().count() != 10 || !session.sprites().get(1) || session.sprites().get(1)->empty()
+		|| !session.sprites().get(10) || session.sprites().get(10)->empty()) {
+		return Fail("sample .spr should decode sprites 1-10");
 	}
 
 	const auto* grass_sprite = session.sprites().get(1);
@@ -78,7 +79,7 @@ int main() {
 
 	ItemDatabase reloaded_items;
 	rme::core::ClientAssetsInfo info;
-	if (!reloaded_items.load(dat_path, info) || reloaded_items.size() != 6) {
+	if (!reloaded_items.load(dat_path, info) || reloaded_items.size() != 10) {
 		return Fail("dat reload failed");
 	}
 	if (!reloaded_items.get(104) || !reloaded_items.get(104)->pickupable || reloaded_items.get(104)->sprite_id != 5) {
@@ -121,6 +122,26 @@ int main() {
 	}
 	if (!saw_pattern) {
 		return Fail("sample map should use more than item 100");
+	}
+
+	if (session.materials().tilesets().size() != 3 || session.materials().walls().size() != 1) {
+		return Fail("sample materials should load Grounds/Walls/Items and Timber");
+	}
+	if (!session.materials().wallForItem(106) || !session.materials().wallForItem(109)
+		|| session.materials().wallForItem(103) != nullptr) {
+		return Fail("timber wall set should include 106-109 but not cave wall 103");
+	}
+	const auto* sample_h = session.map().getTile(Position(100, 98, session.floor()));
+	const auto* sample_join = session.map().getTile(Position(101, 98, session.floor()));
+	const auto* sample_v = session.map().getTile(Position(101, 99, session.floor()));
+	if (!sample_h || sample_h->getItems().empty() || sample_h->getItems().front().getID() != 107) {
+		return Fail("sample L-wall should start with a horizontal piece at 100,98");
+	}
+	if (!sample_join || sample_join->getItems().empty() || sample_join->getItems().front().getID() != 109) {
+		return Fail("sample L-wall corner at 101,98 should be a junction");
+	}
+	if (!sample_v || sample_v->getItems().empty() || sample_v->getItems().front().getID() != 108) {
+		return Fail("sample L-wall should drop a vertical piece at 101,99");
 	}
 
 	const Position paint_pos(101, 101, session.floor());
@@ -502,7 +523,70 @@ int main() {
 		return Fail("goToIssue should jump the camera");
 	}
 
-	std::printf("rme core test ok: %zu tiles, browse/containers, map issues, item props, find, teleports\n",
+	tools.setBrushKind(rme::core::BrushKind::Auto);
+	tools.setBrushSize(1);
+	tools.setBrushId(106);
+	if (tools.resolvedBrush() != rme::core::BrushKind::Wall) {
+		return Fail("auto brush on a timber piece should resolve to Wall");
+	}
+
+	const auto wall_id = [](const rme::core::Tile* tile) -> uint16_t {
+		if (!tile || tile->getItems().empty()) {
+			return 0;
+		}
+		return tile->getItems().back().getID();
+	};
+
+	const int z = tools.floor();
+	tools.beginStroke();
+	tools.strokeAt(Position(140, 140, z));
+	tools.strokeAt(Position(141, 140, z));
+	tools.strokeAt(Position(142, 140, z));
+	tools.endStroke();
+	if (wall_id(tools.map().getTile(Position(140, 140, z))) != 107
+		|| wall_id(tools.map().getTile(Position(141, 140, z))) != 107
+		|| wall_id(tools.map().getTile(Position(142, 140, z))) != 107) {
+		return Fail("a 3-tile timber line should auto-connect as horizontal 107");
+	}
+
+	tools.beginStroke();
+	tools.strokeAt(Position(141, 141, z));
+	tools.endStroke();
+	if (wall_id(tools.map().getTile(Position(141, 140, z))) != 109) {
+		return Fail("south spur should turn the T into junction 109");
+	}
+	if (wall_id(tools.map().getTile(Position(141, 141, z))) != 108) {
+		return Fail("south spur should be vertical 108");
+	}
+	if (wall_id(tools.map().getTile(Position(140, 140, z))) != 107
+		|| wall_id(tools.map().getTile(Position(142, 140, z))) != 107) {
+		return Fail("line ends should stay horizontal after the spur");
+	}
+
+	if (!tools.undo()) {
+		return Fail("wall spur should undo");
+	}
+	if (wall_id(tools.map().getTile(Position(141, 140, z))) != 107
+		|| wall_id(tools.map().getTile(Position(141, 141, z))) != 0) {
+		return Fail("undo spur should restore the horizontal line");
+	}
+
+	tools.beginStroke();
+	tools.strokeAt(Position(141, 140, z), true);
+	tools.endStroke();
+	if (wall_id(tools.map().getTile(Position(141, 140, z))) != 0) {
+		return Fail("shift+wall should remove the timber family");
+	}
+	if (wall_id(tools.map().getTile(Position(140, 140, z))) != 106
+		|| wall_id(tools.map().getTile(Position(142, 140, z))) != 106) {
+		return Fail("removing the middle of a line should restitch ends to poles");
+	}
+
+	if (!tools.undo() || wall_id(tools.map().getTile(Position(141, 140, z))) != 107) {
+		return Fail("undo wall erase should restore the line");
+	}
+
+	std::printf("rme core test ok: %zu tiles, walls/tilesets, browse/containers, map issues\n",
 		reloaded.map().tileCount());
 	return 0;
 }

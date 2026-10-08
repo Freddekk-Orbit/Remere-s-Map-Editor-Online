@@ -4,15 +4,15 @@ WebAssembly port of [Remere's Map Editor](https://github.com/opentibiabr/remeres
 
 This repository is a phased WebAssembly port. The original desktop editor is a wxWidgets + OpenGL application. The browser target removes that windowing stack and boots an ImGui render loop instead.
 
-## Phase 8 status
+## Phase 9 status
 
-- Browse tile: select ground vs overlays, move up/down, remove one item (`EditorSession::browseInspect`)
-- Container contents on the selected item (nested OTBM items already loaded/saved)
-- Map issues: duplicate unique ids, teleports to empty tiles, unknown item ids (Ctrl+E)
-- Sample crate at 100,100 holds loot and has a cover flower; house flower duplicates UID 2000
-- Host test: `rme_core_test` covers stack reorder, container add/remove, issue list, and OTBM nested roundtrip
+- `materials.xml` tilesets group the item palette (Grounds / Walls / Items in the sample)
+- Wall brush auto-connects timber pieces from a 16-slot neighbor mask (N=1 E=2 S=4 W=8) mapped to pole / horizontal / vertical / junction
+- Auto on a wall item resolves to Wall. Shift+click removes that wall family and restitches neighbors. One undo action per drag, including restitch
+- Sample L-wall on existing tiles 100,98 / 101,98 / 101,99 (tile count stays 34). Cave wall 103 is not in the timber set
+- Host test: `rme_core_test` covers a 3-tile line → 107, south spur → 109, invert restitch to poles
 
-Phase 1–7 (build pipeline, OTBM/undo, sprites, brushes, minimap, houses/spawns, item props/find) remain underneath.
+Phase 1–8 (build pipeline, OTBM/undo, sprites, brushes, minimap, houses/spawns, item props/find, browse-tile) remain underneath.
 
 ## Repository layout
 

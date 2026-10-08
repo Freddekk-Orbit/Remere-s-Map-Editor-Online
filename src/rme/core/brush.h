@@ -18,6 +18,7 @@ enum class BrushKind {
 	Select,
 	Flags,
 	House,
+	Wall,
 };
 
 const char* BrushKindName(BrushKind kind);
