@@ -1686,7 +1686,9 @@ private:
 		}
 
 		if (session_.brushKind() == rme::core::BrushKind::Creature) {
-			if (ImGui::InputText("Creature", monster_name_, sizeof(monster_name_))) {
+			ImGui::TextUnformatted("Name");
+			ImGui::SameLine();
+			if (ImGui::InputText("##creature_name", monster_name_, sizeof(monster_name_))) {
 				session_.setCreatureName(monster_name_);
 			}
 			int radius = session_.spawnRadius();
@@ -1699,15 +1701,19 @@ private:
 				session_.setSpawnTime(static_cast<uint32_t>(std::max(1, delay)));
 			}
 			ImGui::TextUnformatted("Names");
+			ImGui::PushID("sample-creatures");
 			for (int i = 0; i < 8; ++i) {
 				if (i > 0 && i % 4 != 0) {
 					ImGui::SameLine();
 				}
+				ImGui::PushID(i);
 				if (ImGui::SmallButton(rme::core::kSampleCreatures[i])) {
 					session_.setCreatureName(rme::core::kSampleCreatures[i]);
 					std::snprintf(monster_name_, sizeof(monster_name_), "%s", rme::core::kSampleCreatures[i]);
 				}
+				ImGui::PopID();
 			}
+			ImGui::PopID();
 		}
 
 		ImGui::Text("Resolved: %s", rme::core::BrushKindName(session_.resolvedBrush()));
