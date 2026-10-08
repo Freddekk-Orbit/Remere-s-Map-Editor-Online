@@ -34,8 +34,8 @@ int main() {
 		std::fprintf(stderr, "createSampleAssets failed: %s\n", session.lastError().c_str());
 		return 1;
 	}
-	if (!session.assets().dat_loaded || session.items().size() != 18) {
-		return Fail("expected 18 sample items (100-117)");
+	if (!session.assets().dat_loaded || session.items().size() != 33) {
+		return Fail("expected 33 sample items (100-132)");
 	}
 	const auto* grass = session.items().get(100);
 	const auto* water = session.items().get(102);
@@ -53,9 +53,9 @@ int main() {
 	if (!box || !box->container || !box->pickupable) {
 		return Fail("item 105 should be a pickupable container");
 	}
-	if (session.sprites().count() != 18 || !session.sprites().get(1) || session.sprites().get(1)->empty()
-		|| !session.sprites().get(18) || session.sprites().get(18)->empty()) {
-		return Fail("sample .spr should decode sprites 1-18");
+	if (session.sprites().count() != 33 || !session.sprites().get(1) || session.sprites().get(1)->empty()
+		|| !session.sprites().get(33) || session.sprites().get(33)->empty()) {
+		return Fail("sample .spr should decode sprites 1-33");
 	}
 
 	const auto* grass_sprite = session.sprites().get(1);
@@ -79,7 +79,7 @@ int main() {
 
 	ItemDatabase reloaded_items;
 	rme::core::ClientAssetsInfo info;
-	if (!reloaded_items.load(dat_path, info) || reloaded_items.size() != 18) {
+	if (!reloaded_items.load(dat_path, info) || reloaded_items.size() != 33) {
 		return Fail("dat reload failed");
 	}
 	if (!reloaded_items.get(104) || !reloaded_items.get(104)->pickupable || reloaded_items.get(104)->sprite_id != 5) {
@@ -124,9 +124,11 @@ int main() {
 		return Fail("sample map should use more than item 100");
 	}
 
-	if (session.materials().tilesets().size() != 4 || session.materials().walls().size() != 1
-		|| session.materials().borders().size() != 1 || session.materials().doodads().size() != 1) {
-		return Fail("sample materials should load tilesets, Timber, Water shores, and Flowers doodad");
+	if (session.materials().tilesets().size() != 5 || session.materials().walls().size() != 1
+		|| session.materials().borders().size() != 1 || session.materials().doodads().size() != 1
+		|| session.materials().doors().size() != 1 || session.materials().tables().size() != 1
+		|| session.materials().carpets().size() != 1) {
+		return Fail("sample materials should load tilesets, Timber, Water, Flowers, door, table, carpet");
 	}
 	if (!session.materials().wallForItem(106) || !session.materials().wallForItem(109)
 		|| session.materials().wallForItem(103) != nullptr) {
@@ -744,7 +746,66 @@ int main() {
 		return Fail("undo doodad erase should restore the flower");
 	}
 
-	std::printf("rme core test ok: %zu tiles, doodads/borders/walls, browse/containers, map issues\n",
+	tools.setBrushKind(rme::core::BrushKind::Auto);
+	tools.setBrushSize(1);
+	tools.setBrushId(118);
+	if (tools.resolvedBrush() != rme::core::BrushKind::Door) {
+		return Fail("auto brush on a door should resolve to Door");
+	}
+	tools.setBrushId(106);
+	tools.beginStroke();
+	tools.strokeAt(Position(180, 150, z));
+	tools.strokeAt(Position(181, 150, z));
+	tools.endStroke();
+	tools.setBrushId(118);
+	tools.beginStroke();
+	tools.strokeAt(Position(181, 150, z));
+	tools.endStroke();
+	if (!tile_has(tools.map().getTile(Position(181, 150, z)), 118)) {
+		return Fail("door on a horizontal wall should pick the horizontal door");
+	}
+
+	tools.setBrushId(120);
+	if (tools.resolvedBrush() != rme::core::BrushKind::Table) {
+		return Fail("auto brush on a table should resolve to Table");
+	}
+	tools.beginStroke();
+	tools.strokeAt(Position(190, 150, z));
+	tools.strokeAt(Position(191, 150, z));
+	tools.endStroke();
+	if (!tile_has(tools.map().getTile(Position(190, 150, z)), 121)
+		|| !tile_has(tools.map().getTile(Position(191, 150, z)), 121)) {
+		return Fail("two adjacent tables should restitch to horizontal pieces");
+	}
+
+	tools.setBrushId(124);
+	if (tools.resolvedBrush() != rme::core::BrushKind::Carpet) {
+		return Fail("auto brush on a carpet should resolve to Carpet");
+	}
+	tools.beginStroke();
+	tools.strokeAt(Position(200, 150, z));
+	tools.strokeAt(Position(201, 150, z));
+	tools.strokeAt(Position(200, 151, z));
+	tools.strokeAt(Position(201, 151, z));
+	tools.endStroke();
+	if (!tile_has(tools.map().getTile(Position(200, 150, z)), 132)
+		|| !tile_has(tools.map().getTile(Position(201, 150, z)), 129)
+		|| !tile_has(tools.map().getTile(Position(200, 151, z)), 131)
+		|| !tile_has(tools.map().getTile(Position(201, 151, z)), 130)) {
+		return Fail("2x2 carpet should restitch to outer corners");
+	}
+	tools.beginStroke();
+	tools.strokeAt(Position(200, 150, z), true);
+	tools.endStroke();
+	if (tile_has(tools.map().getTile(Position(200, 150, z)), 132)
+		|| tile_has(tools.map().getTile(Position(200, 150, z)), 124)) {
+		return Fail("shift+carpet should remove that carpet tile");
+	}
+	if (!tools.undo() || !tile_has(tools.map().getTile(Position(200, 150, z)), 132)) {
+		return Fail("undo carpet erase should restore the NW corner");
+	}
+
+	std::printf("rme core test ok: %zu tiles, furniture/doodads/borders/walls, browse/containers, map issues\n",
 		reloaded.map().tileCount());
 	return 0;
 }

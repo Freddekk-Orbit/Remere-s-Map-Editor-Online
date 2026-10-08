@@ -67,6 +67,51 @@ void ApplyBuiltinName(ItemType& type) {
 		case 117:
 			type.name = "Shore nw";
 			break;
+		case 118:
+			type.name = "Door h";
+			break;
+		case 119:
+			type.name = "Door v";
+			break;
+		case 120:
+			type.name = "Table";
+			break;
+		case 121:
+			type.name = "Table h";
+			break;
+		case 122:
+			type.name = "Table v";
+			break;
+		case 123:
+			type.name = "Table join";
+			break;
+		case 124:
+			type.name = "Carpet";
+			break;
+		case 125:
+			type.name = "Carpet n";
+			break;
+		case 126:
+			type.name = "Carpet e";
+			break;
+		case 127:
+			type.name = "Carpet s";
+			break;
+		case 128:
+			type.name = "Carpet w";
+			break;
+		case 129:
+			type.name = "Carpet ne";
+			break;
+		case 130:
+			type.name = "Carpet se";
+			break;
+		case 131:
+			type.name = "Carpet sw";
+			break;
+		case 132:
+			type.name = "Carpet nw";
+			break;
 		default:
 			type.name = "Item " + std::to_string(type.id);
 			break;
@@ -233,6 +278,35 @@ ItemType MakeSampleItem(uint16_t id) {
 		case 117:
 			type.ground_border = true;
 			type.not_moveable = true;
+			type.sprite_id = static_cast<uint16_t>(id - 99);
+			break;
+		case 118:
+		case 119:
+			type.not_walkable = true;
+			type.not_moveable = true;
+			type.block_projectile = true;
+			type.minimap_color = 86;
+			type.sprite_id = static_cast<uint16_t>(id - 99);
+			break;
+		case 120:
+		case 121:
+		case 122:
+		case 123:
+			type.not_moveable = true;
+			type.minimap_color = 121;
+			type.sprite_id = static_cast<uint16_t>(id - 99);
+			break;
+		case 124:
+		case 125:
+		case 126:
+		case 127:
+		case 128:
+		case 129:
+		case 130:
+		case 131:
+		case 132:
+			type.not_moveable = true;
+			type.minimap_color = 186;
 			type.sprite_id = static_cast<uint16_t>(id - 99);
 			break;
 		default:
@@ -458,7 +532,7 @@ bool ItemDatabase::writeSample(const std::string& path) {
 	}
 
 	constexpr uint32_t kSampleSignature = 0x00008600;
-	constexpr uint16_t kMaxItem = 117;
+	constexpr uint16_t kMaxItem = 132;
 	file.addU32(kSampleSignature);
 	file.addU16(kMaxItem);
 	file.addU16(0);

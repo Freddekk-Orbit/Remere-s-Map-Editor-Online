@@ -67,3 +67,8 @@ Port the C++ desktop Remere's Map Editor (https://github.com/opentibiabr/remeres
 ## Phase 11 Conventions
 - Doodad scatter lives in `src/rme/core` (`DoodadSet` in materials.xml). ImGui only sends doodad strokes.
 - Chance is a stable position hash, not `rand()`. Auto on a doodad item resolves to Doodad. Overlay still paints every tile. Shift+doodad removes the family.
+
+## Phase 12 Conventions
+- Door, table, and carpet families live in `src/rme/core` (`DoorSet` / `TableSet` / `CarpetSet` in materials.xml). ImGui only sends those strokes.
+- Tables restitch from a 4-neighbor mask. Carpets restitch one overlay piece per tile (inner / edges / corners). Doors pick H/V from nearby walls.
+- Sample `.spr` stays original 32×32 art (no copyrighted client files). Grounds must tile without a 1px outline so the online canvas reads as a map.

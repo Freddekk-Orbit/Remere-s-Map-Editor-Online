@@ -302,7 +302,7 @@ private:
 				ImGui::EndMenu();
 			}
 			if (ImGui::BeginMenu("Help")) {
-				ImGui::MenuItem("About Phase 11", nullptr, &show_about_);
+				ImGui::MenuItem("About Phase 12", nullptr, &show_about_);
 				ImGui::EndMenu();
 			}
 			ImGui::SameLine(ImGui::GetWindowWidth() - 220.0f);
@@ -430,15 +430,16 @@ private:
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 16.0f, viewport->WorkPos.y + 28.0f), ImGuiCond_FirstUseEver);
 		ImGui::SetNextWindowSize(ImVec2(460.0f, 240.0f), ImGuiCond_FirstUseEver);
-		if (!ImGui::Begin("RME Wasm - Phase 11", nullptr, ImGuiWindowFlags_NoCollapse)) {
+		if (!ImGui::Begin("RME Wasm - Phase 12", nullptr, ImGuiWindowFlags_NoCollapse)) {
 			ImGui::End();
 			return;
 		}
 
 		ImGui::TextWrapped(
-			"Doodad scatter: Auto or Doodad on a flower places overlays with 60%% chance so a 3x3 brush "
-			"does not fill every tile. Shift+click removes that doodad family. Overlay still paints "
-			"every tile. Walls and water borders from Phase 9-10 stay as they were."
+			"Furniture: Auto picks Door, Table, or Carpet from materials.xml. Tables and carpets "
+			"auto-connect; doors face the nearby wall. Sample .spr tiles are seamless 32x32 drawings "
+			"(not client files) so grass, water, wood, and red carpet read as objects instead of "
+			"outlined squares. Shift+click removes that furniture family."
 		);
 		ImGui::Separator();
 		ImGui::Text("Map: %s  %dx%d  tiles=%zu  items=%zu",
@@ -476,9 +477,9 @@ private:
 		ImGui::TextUnformatted("Remere's Map Editor - WebAssembly port");
 		ImGui::Separator();
 		ImGui::TextWrapped(
-			"Phase 11 adds doodad brushes from materials.xml. A doodad is a named overlay set with a "
-			"chance (sample Flowers = item 104 at 60%%). Scatter uses a stable position hash, so the "
-			"same tile always hits or misses. One undo action per drag."
+			"Phase 12 adds door, table, and carpet brushes plus a fuller sample Tibia.spr. Grounds "
+			"tile without a 1px border. Doors, tables, and carpets are original 32x32 drawings in the "
+			"sample sheet so the online editor shows readable furniture without shipping client files."
 		);
 		ImGui::Spacing();
 		ImGui::BulletText("UI: Dear ImGui (SDL2 + OpenGL ES 3.0 / WebGL2)");
@@ -1488,7 +1489,7 @@ private:
 	void DrawBrushTools() {
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 750.0f, viewport->WorkPos.y + 460.0f), ImGuiCond_FirstUseEver);
-		ImGui::SetNextWindowSize(ImVec2(360.0f, 280.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(380.0f, 320.0f), ImGuiCond_FirstUseEver);
 		if (!ImGui::Begin("Brushes", &show_brushes_)) {
 			ImGui::End();
 			return;
@@ -1506,10 +1507,13 @@ private:
 			rme::core::BrushKind::Wall,
 			rme::core::BrushKind::Border,
 			rme::core::BrushKind::Doodad,
+			rme::core::BrushKind::Door,
+			rme::core::BrushKind::Table,
+			rme::core::BrushKind::Carpet,
 		};
-		for (int i = 0; i < 11; ++i) {
-			if (i == 6) {
-				// Second row: Flags / House / Wall / Border / Doodad
+		for (int i = 0; i < 14; ++i) {
+			if (i > 0 && i % 6 == 0) {
+				// New row every 6 tools
 			} else if (i > 0) {
 				ImGui::SameLine();
 			}
@@ -1571,6 +1575,7 @@ private:
 		ImGui::TextDisabled("Wall auto-connects timber pieces. Shift+click removes the family.");
 		ImGui::TextDisabled("Border paints water shores against land. Shift+click removes water.");
 		ImGui::TextDisabled("Doodad scatters overlays (60%% flowers). Shift+click removes the family.");
+		ImGui::TextDisabled("Door faces the nearby wall. Table and carpet auto-connect. Shift+click clears.");
 		ImGui::TextDisabled("[ ] change size. Del deletes. Ctrl+C / X / V clipboard.");
 		ImGui::End();
 	}

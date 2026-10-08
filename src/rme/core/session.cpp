@@ -207,6 +207,15 @@ BrushKind EditorSession::resolvedBrush() const {
 	if (brush_kind_ == BrushKind::Auto && materials_.doodadForItem(brush_id_)) {
 		return BrushKind::Doodad;
 	}
+	if (brush_kind_ == BrushKind::Auto && materials_.doorForItem(brush_id_)) {
+		return BrushKind::Door;
+	}
+	if (brush_kind_ == BrushKind::Auto && materials_.tableForItem(brush_id_)) {
+		return BrushKind::Table;
+	}
+	if (brush_kind_ == BrushKind::Auto && materials_.carpetForItem(brush_id_)) {
+		return BrushKind::Carpet;
+	}
 	return ResolveBrush(brush_kind_, items_.get(brush_id_));
 }
 
@@ -521,13 +530,197 @@ void EditorSession::strokeDoodadAt(const Position& position, bool invert) {
 	}
 }
 
+void EditorSession::strokeDoorAt(const Position& position, bool invert) {
+	const DoorSet* set = materials_.doorForItem(brush_id_);
+	if (!set) {
+		last_error_ = "Door brush needs a door item from materials.xml";
+		return;
+	}
+	last_error_.clear();
+	const WallSet* walls = materials_.walls().empty() ? nullptr : &materials_.walls().front();
+
+	for (const Position& cell : BrushFootprint(position, brush_size_, map_.getWidth(), map_.getHeight())) {
+		const uint64_t key = MakeTileKey(cell.x, cell.y, cell.z);
+		if (stroke_seen_.count(key)) {
+			continue;
+		}
+		stroke_seen_.insert(key);
+
+		Tile after;
+		if (const Tile* existing = map_.getTile(cell)) {
+			after = existing->deepCopy();
+		} else {
+			after.setPosition(cell);
+		}
+		after.setPosition(cell);
+
+		bool changed = false;
+		if (invert) {
+			changed = RemoveDoorFromTile(after, *set);
+		} else {
+			changed = ApplyDoorToTile(after, set->pieceFor(false), *set);
+		}
+		if (changed) {
+			writeTileAfter(stroke_, cell, std::move(after));
+		}
+		if (invert) {
+			continue;
+		}
+		const Tile* placed = map_.getTile(cell);
+		if (!placed || !TileHasDoor(*placed, *set)) {
+			continue;
+		}
+		Tile oriented = placed->deepCopy();
+		if (ApplyDoorToTile(oriented, ResolveDoorPiece(map_, cell, *set, walls), *set)) {
+			writeTileAfter(stroke_, cell, std::move(oriented));
+		}
+	}
+}
+
+void EditorSession::strokeTableAt(const Position& position, bool invert) {
+	const TableSet* set = materials_.tableForItem(brush_id_);
+	if (!set) {
+		last_error_ = "Table brush needs a table item from materials.xml";
+		return;
+	}
+	last_error_.clear();
+
+	std::vector<Position> seeds;
+	for (const Position& cell : BrushFootprint(position, brush_size_, map_.getWidth(), map_.getHeight())) {
+		seeds.push_back(cell);
+		const uint64_t key = MakeTileKey(cell.x, cell.y, cell.z);
+		if (stroke_seen_.count(key)) {
+			continue;
+		}
+		stroke_seen_.insert(key);
+
+		Tile after;
+		if (const Tile* existing = map_.getTile(cell)) {
+			after = existing->deepCopy();
+		} else {
+			after.setPosition(cell);
+		}
+		after.setPosition(cell);
+
+		bool changed = false;
+		if (invert) {
+			changed = RemoveTableFromTile(after, *set);
+		} else if (!TileHasTable(after, *set)) {
+			changed = ApplyTableToTile(after, set->pieceFor(0), *set);
+		}
+		if (changed) {
+			writeTileAfter(stroke_, cell, std::move(after));
+		}
+	}
+
+	auto restitchCell = [&](const Position& cell) {
+		if (!map_.inBounds(cell)) {
+			return;
+		}
+		const Tile* tile = map_.getTile(cell);
+		if (!tile || !TileHasTable(*tile, *set)) {
+			return;
+		}
+		Tile after = tile->deepCopy();
+		if (ApplyTableToTile(after, ResolveTablePiece(map_, cell, *set), *set)) {
+			writeTileAfter(stroke_, cell, std::move(after));
+		}
+	};
+
+	constexpr int kDx[4] = {0, 1, 0, -1};
+	constexpr int kDy[4] = {-1, 0, 1, 0};
+	std::unordered_set<uint64_t> restitched;
+	for (const Position& cell : seeds) {
+		const uint64_t key = MakeTileKey(cell.x, cell.y, cell.z);
+		if (restitched.insert(key).second) {
+			restitchCell(cell);
+		}
+		for (int i = 0; i < 4; ++i) {
+			const Position neighbor(cell.x + kDx[i], cell.y + kDy[i], cell.z);
+			const uint64_t nkey = MakeTileKey(neighbor.x, neighbor.y, neighbor.z);
+			if (restitched.insert(nkey).second) {
+				restitchCell(neighbor);
+			}
+		}
+	}
+}
+
+void EditorSession::strokeCarpetAt(const Position& position, bool invert) {
+	const CarpetSet* set = materials_.carpetForItem(brush_id_);
+	if (!set) {
+		last_error_ = "Carpet brush needs a carpet item from materials.xml";
+		return;
+	}
+	last_error_.clear();
+
+	std::vector<Position> seeds;
+	for (const Position& cell : BrushFootprint(position, brush_size_, map_.getWidth(), map_.getHeight())) {
+		seeds.push_back(cell);
+		const uint64_t key = MakeTileKey(cell.x, cell.y, cell.z);
+		if (stroke_seen_.count(key)) {
+			continue;
+		}
+		stroke_seen_.insert(key);
+
+		Tile after;
+		if (const Tile* existing = map_.getTile(cell)) {
+			after = existing->deepCopy();
+		} else {
+			after.setPosition(cell);
+		}
+		after.setPosition(cell);
+
+		bool changed = false;
+		if (invert) {
+			changed = RemoveCarpetFromTile(after, *set);
+		} else if (!TileHasCarpet(after, *set)) {
+			changed = ApplyCarpetToTile(after, set->inner_id != 0 ? set->inner_id : set->look_id, *set);
+		}
+		if (changed) {
+			writeTileAfter(stroke_, cell, std::move(after));
+		}
+	}
+
+	auto restitchCell = [&](const Position& cell) {
+		if (!map_.inBounds(cell)) {
+			return;
+		}
+		const Tile* tile = map_.getTile(cell);
+		if (!tile || !TileHasCarpet(*tile, *set)) {
+			return;
+		}
+		Tile after = tile->deepCopy();
+		if (ApplyCarpetToTile(after, ResolveCarpetPiece(map_, cell, *set), *set)) {
+			writeTileAfter(stroke_, cell, std::move(after));
+		}
+	};
+
+	constexpr int kDx[4] = {0, 1, 0, -1};
+	constexpr int kDy[4] = {-1, 0, 1, 0};
+	std::unordered_set<uint64_t> restitched;
+	for (const Position& cell : seeds) {
+		const uint64_t key = MakeTileKey(cell.x, cell.y, cell.z);
+		if (restitched.insert(key).second) {
+			restitchCell(cell);
+		}
+		for (int i = 0; i < 4; ++i) {
+			const Position neighbor(cell.x + kDx[i], cell.y + kDy[i], cell.z);
+			const uint64_t nkey = MakeTileKey(neighbor.x, neighbor.y, neighbor.z);
+			if (restitched.insert(nkey).second) {
+				restitchCell(neighbor);
+			}
+		}
+	}
+}
+
 void EditorSession::strokeAt(const Position& position, bool invert) {
 	if (!stroking_) {
 		beginStroke();
 	}
 	BrushKind kind = resolvedBrush();
 	if (invert && kind != BrushKind::Flags && kind != BrushKind::House && kind != BrushKind::Wall
-		&& kind != BrushKind::Border && kind != BrushKind::Doodad) {
+		&& kind != BrushKind::Border && kind != BrushKind::Doodad && kind != BrushKind::Door
+		&& kind != BrushKind::Table && kind != BrushKind::Carpet) {
 		kind = BrushKind::Eraser;
 	}
 	if (kind == BrushKind::Fill || kind == BrushKind::Select) {
@@ -543,6 +736,18 @@ void EditorSession::strokeAt(const Position& position, bool invert) {
 	}
 	if (kind == BrushKind::Doodad) {
 		strokeDoodadAt(position, invert);
+		return;
+	}
+	if (kind == BrushKind::Door) {
+		strokeDoorAt(position, invert);
+		return;
+	}
+	if (kind == BrushKind::Table) {
+		strokeTableAt(position, invert);
+		return;
+	}
+	if (kind == BrushKind::Carpet) {
+		strokeCarpetAt(position, invert);
 		return;
 	}
 	if (kind == BrushKind::House && house_id_ == 0) {

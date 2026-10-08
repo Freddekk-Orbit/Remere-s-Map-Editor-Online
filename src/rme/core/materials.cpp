@@ -187,16 +187,113 @@ uint16_t DoodadSet::pick(const Position& position) const {
 	return items[index];
 }
 
+bool DoorSet::contains(uint16_t item_id) const {
+	return item_id != 0 && (item_id == look_id || item_id == horizontal || item_id == vertical);
+}
+
+uint16_t DoorSet::pieceFor(bool horizontal_door) const {
+	const uint16_t id = horizontal_door ? horizontal : vertical;
+	if (id != 0) {
+		return id;
+	}
+	return look_id;
+}
+
+bool TableSet::contains(uint16_t item_id) const {
+	if (item_id == 0) {
+		return false;
+	}
+	if (look_id == item_id) {
+		return true;
+	}
+	for (uint16_t piece_id : piece) {
+		if (piece_id == item_id) {
+			return true;
+		}
+	}
+	return false;
+}
+
+uint16_t TableSet::pieceFor(uint8_t mask) const {
+	const uint16_t id = piece[mask & 15];
+	if (id != 0) {
+		return id;
+	}
+	return look_id != 0 ? look_id : piece[0];
+}
+
+void TableSet::fillFromParts(uint16_t pole, uint16_t horizontal, uint16_t vertical, uint16_t junction) {
+	look_id = pole;
+	for (uint8_t mask = 0; mask < 16; ++mask) {
+		const bool n = (mask & kWallNorth) != 0;
+		const bool e = (mask & kWallEast) != 0;
+		const bool s = (mask & kWallSouth) != 0;
+		const bool w = (mask & kWallWest) != 0;
+		const bool ns = n || s;
+		const bool ew = e || w;
+		if (ns && ew) {
+			piece[mask] = junction;
+		} else if (ns) {
+			piece[mask] = vertical;
+		} else if (ew) {
+			piece[mask] = horizontal;
+		} else {
+			piece[mask] = pole;
+		}
+	}
+}
+
+bool CarpetSet::contains(uint16_t item_id) const {
+	if (item_id == 0) {
+		return false;
+	}
+	return item_id == look_id || item_id == inner_id || item_id == edge_n || item_id == edge_e || item_id == edge_s
+		|| item_id == edge_w || item_id == corner_ne || item_id == corner_se || item_id == corner_sw
+		|| item_id == corner_nw;
+}
+
+uint16_t CarpetSet::pieceFor(bool n, bool e, bool s, bool w) const {
+	if (n && e && corner_ne != 0) {
+		return corner_ne;
+	}
+	if (e && s && corner_se != 0) {
+		return corner_se;
+	}
+	if (s && w && corner_sw != 0) {
+		return corner_sw;
+	}
+	if (w && n && corner_nw != 0) {
+		return corner_nw;
+	}
+	if (n && edge_n != 0) {
+		return edge_n;
+	}
+	if (e && edge_e != 0) {
+		return edge_e;
+	}
+	if (s && edge_s != 0) {
+		return edge_s;
+	}
+	if (w && edge_w != 0) {
+		return edge_w;
+	}
+	return inner_id != 0 ? inner_id : look_id;
+}
+
 void Materials::clear() {
 	tilesets_.clear();
 	walls_.clear();
 	borders_.clear();
 	doodads_.clear();
+	doors_.clear();
+	tables_.clear();
+	carpets_.clear();
 	error_.clear();
 }
 
 void Materials::ensureDefaults() {
-	if (!tilesets_.empty() || !walls_.empty() || !borders_.empty() || !doodads_.empty()) {
+	if (!tilesets_.empty() || !walls_.empty() || !borders_.empty() || !doodads_.empty() || !doors_.empty()
+		|| !tables_.empty() || !carpets_.empty()) {
 		return;
 	}
 	WallSet timber;
@@ -224,10 +321,37 @@ void Materials::ensureDefaults() {
 	flowers.items = {104};
 	doodads_.push_back(flowers);
 
+	DoorSet wood_door;
+	wood_door.name = "Wood";
+	wood_door.look_id = 118;
+	wood_door.horizontal = 118;
+	wood_door.vertical = 119;
+	doors_.push_back(wood_door);
+
+	TableSet wood_table;
+	wood_table.name = "Wood";
+	wood_table.fillFromParts(120, 121, 122, 123);
+	tables_.push_back(wood_table);
+
+	CarpetSet red_carpet;
+	red_carpet.name = "Red";
+	red_carpet.look_id = 124;
+	red_carpet.inner_id = 124;
+	red_carpet.edge_n = 125;
+	red_carpet.edge_e = 126;
+	red_carpet.edge_s = 127;
+	red_carpet.edge_w = 128;
+	red_carpet.corner_ne = 129;
+	red_carpet.corner_se = 130;
+	red_carpet.corner_sw = 131;
+	red_carpet.corner_nw = 132;
+	carpets_.push_back(red_carpet);
+
 	tilesets_.push_back(Tileset{"Grounds", {100, 101, 102}});
 	tilesets_.push_back(Tileset{"Borders", {110, 111, 112, 113, 114, 115, 116, 117}});
 	tilesets_.push_back(Tileset{"Walls", {103, 106, 107, 108, 109}});
 	tilesets_.push_back(Tileset{"Items", {104, 105}});
+	tilesets_.push_back(Tileset{"Furniture", {118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132}});
 }
 
 bool Materials::writeSample(const std::string& path) {
@@ -270,6 +394,25 @@ bool Materials::writeSample(const std::string& path) {
 				out << "\"/>\n";
 			}
 		}
+		if (set.name == "Furniture") {
+			for (const auto& door : doors_) {
+				out << "    <door name=\"" << XmlEscape(door.name) << "\" lookid=\"" << door.look_id
+					<< "\" horizontal=\"" << door.horizontal << "\" vertical=\"" << door.vertical << "\"/>\n";
+			}
+			for (const auto& table : tables_) {
+				out << "    <table name=\"" << XmlEscape(table.name) << "\" lookid=\"" << table.look_id
+					<< "\" pole=\"" << table.pieceFor(0) << "\" horizontal=\"" << table.pieceFor(kWallEast | kWallWest)
+					<< "\" vertical=\"" << table.pieceFor(kWallNorth | kWallSouth) << "\" junction=\""
+					<< table.pieceFor(15) << "\"/>\n";
+			}
+			for (const auto& carpet : carpets_) {
+				out << "    <carpet name=\"" << XmlEscape(carpet.name) << "\" lookid=\"" << carpet.look_id
+					<< "\" inner=\"" << carpet.inner_id << "\" edge_n=\"" << carpet.edge_n << "\" edge_e=\""
+					<< carpet.edge_e << "\" edge_s=\"" << carpet.edge_s << "\" edge_w=\"" << carpet.edge_w
+					<< "\" corner_ne=\"" << carpet.corner_ne << "\" corner_se=\"" << carpet.corner_se
+					<< "\" corner_sw=\"" << carpet.corner_sw << "\" corner_nw=\"" << carpet.corner_nw << "\"/>\n";
+			}
+		}
 		for (uint16_t id : set.items) {
 			out << "    <item id=\"" << id << "\"/>\n";
 		}
@@ -305,6 +448,9 @@ bool Materials::load(const std::string& path) {
 		const auto wall_at = xml.find("<wall", pos);
 		const auto ground_at = xml.find("<ground", pos);
 		const auto doodad_at = xml.find("<doodad", pos);
+		const auto door_at = xml.find("<door", pos);
+		const auto table_at = xml.find("<table", pos);
+		const auto carpet_at = xml.find("<carpet", pos);
 		std::size_t next = std::string::npos;
 		const char* kind = nullptr;
 		if (tileset_at != std::string::npos && (next == std::string::npos || tileset_at < next)) {
@@ -326,6 +472,18 @@ bool Materials::load(const std::string& path) {
 		if (doodad_at != std::string::npos && (next == std::string::npos || doodad_at < next)) {
 			next = doodad_at;
 			kind = "doodad";
+		}
+		if (door_at != std::string::npos && (next == std::string::npos || door_at < next)) {
+			next = door_at;
+			kind = "door";
+		}
+		if (table_at != std::string::npos && (next == std::string::npos || table_at < next)) {
+			next = table_at;
+			kind = "table";
+		}
+		if (carpet_at != std::string::npos && (next == std::string::npos || carpet_at < next)) {
+			next = carpet_at;
+			kind = "carpet";
 		}
 		if (next == std::string::npos) {
 			break;
@@ -378,10 +536,42 @@ bool Materials::load(const std::string& path) {
 				doodad.items.push_back(doodad.look_id);
 			}
 			doodads_.push_back(std::move(doodad));
+		} else if (std::string(kind) == "door") {
+			DoorSet door;
+			door.name = AttrString(tag, "name", "Door");
+			door.look_id = static_cast<uint16_t>(AttrInt(tag, "lookid"));
+			door.horizontal = static_cast<uint16_t>(AttrInt(tag, "horizontal", door.look_id));
+			door.vertical = static_cast<uint16_t>(AttrInt(tag, "vertical", door.look_id));
+			doors_.push_back(std::move(door));
+		} else if (std::string(kind) == "table") {
+			TableSet table;
+			table.name = AttrString(tag, "name", "Table");
+			const uint16_t pole = static_cast<uint16_t>(AttrInt(tag, "pole", AttrInt(tag, "lookid")));
+			const uint16_t horizontal = static_cast<uint16_t>(AttrInt(tag, "horizontal", pole));
+			const uint16_t vertical = static_cast<uint16_t>(AttrInt(tag, "vertical", pole));
+			const uint16_t junction = static_cast<uint16_t>(AttrInt(tag, "junction", pole));
+			table.fillFromParts(pole, horizontal, vertical, junction);
+			table.look_id = static_cast<uint16_t>(AttrInt(tag, "lookid", pole));
+			tables_.push_back(std::move(table));
+		} else if (std::string(kind) == "carpet") {
+			CarpetSet carpet;
+			carpet.name = AttrString(tag, "name", "Carpet");
+			carpet.look_id = static_cast<uint16_t>(AttrInt(tag, "lookid"));
+			carpet.inner_id = static_cast<uint16_t>(AttrInt(tag, "inner", carpet.look_id));
+			carpet.edge_n = static_cast<uint16_t>(AttrInt(tag, "edge_n"));
+			carpet.edge_e = static_cast<uint16_t>(AttrInt(tag, "edge_e"));
+			carpet.edge_s = static_cast<uint16_t>(AttrInt(tag, "edge_s"));
+			carpet.edge_w = static_cast<uint16_t>(AttrInt(tag, "edge_w"));
+			carpet.corner_ne = static_cast<uint16_t>(AttrInt(tag, "corner_ne"));
+			carpet.corner_se = static_cast<uint16_t>(AttrInt(tag, "corner_se"));
+			carpet.corner_sw = static_cast<uint16_t>(AttrInt(tag, "corner_sw"));
+			carpet.corner_nw = static_cast<uint16_t>(AttrInt(tag, "corner_nw"));
+			carpets_.push_back(std::move(carpet));
 		}
 	}
 
-	if (tilesets_.empty() && walls_.empty() && borders_.empty() && doodads_.empty()) {
+	if (tilesets_.empty() && walls_.empty() && borders_.empty() && doodads_.empty() && doors_.empty()
+		&& tables_.empty() && carpets_.empty()) {
 		error_ = "materials.xml had no tilesets";
 		return false;
 	}
@@ -411,6 +601,33 @@ const DoodadSet* Materials::doodadForItem(uint16_t item_id) const {
 	for (const auto& doodad : doodads_) {
 		if (doodad.contains(item_id)) {
 			return &doodad;
+		}
+	}
+	return nullptr;
+}
+
+const DoorSet* Materials::doorForItem(uint16_t item_id) const {
+	for (const auto& door : doors_) {
+		if (door.contains(item_id)) {
+			return &door;
+		}
+	}
+	return nullptr;
+}
+
+const TableSet* Materials::tableForItem(uint16_t item_id) const {
+	for (const auto& table : tables_) {
+		if (table.contains(item_id)) {
+			return &table;
+		}
+	}
+	return nullptr;
+}
+
+const CarpetSet* Materials::carpetForItem(uint16_t item_id) const {
+	for (const auto& carpet : carpets_) {
+		if (carpet.contains(item_id)) {
+			return &carpet;
 		}
 	}
 	return nullptr;
@@ -610,6 +827,165 @@ bool RemoveDoodadFromTile(Tile& tile, const DoodadSet& set) {
 		}
 	}
 	return changed;
+}
+
+namespace {
+
+template <typename Contains>
+bool ReplaceFamilyOnTile(Tile& tile, uint16_t piece_id, Contains contains) {
+	if (piece_id == 0) {
+		return false;
+	}
+	bool changed = false;
+	bool has_piece = false;
+	auto& items = tile.getItems();
+	for (auto it = items.begin(); it != items.end();) {
+		if (!contains(*it)) {
+			++it;
+			continue;
+		}
+		if (!has_piece && it->getID() == piece_id) {
+			has_piece = true;
+			++it;
+			continue;
+		}
+		it = items.erase(it);
+		changed = true;
+	}
+	if (!has_piece) {
+		tile.addItem(Item(piece_id));
+		changed = true;
+	}
+	return changed;
+}
+
+template <typename Contains>
+bool EraseFamilyFromTile(Tile& tile, Contains contains) {
+	bool changed = false;
+	auto& items = tile.getItems();
+	for (auto it = items.begin(); it != items.end();) {
+		if (contains(*it)) {
+			it = items.erase(it);
+			changed = true;
+		} else {
+			++it;
+		}
+	}
+	return changed;
+}
+
+} // namespace
+
+bool TileHasDoor(const Tile& tile, const DoorSet& set) {
+	for (const Item& item : tile.getItems()) {
+		if (set.contains(item.getID())) {
+			return true;
+		}
+	}
+	return false;
+}
+
+uint16_t ResolveDoorPiece(const Map& map, const Position& position, const DoorSet& set, const WallSet* walls) {
+	bool ew = false;
+	bool ns = false;
+	if (walls) {
+		const uint8_t mask = WallNeighborMask(map, position, *walls);
+		ew = (mask & (kWallEast | kWallWest)) != 0;
+		ns = (mask & (kWallNorth | kWallSouth)) != 0;
+		if (const Tile* self = map.getTile(position); self && TileHasWall(*self, *walls)) {
+			if (!ew && !ns) {
+				const uint16_t piece = ResolveWallPiece(map, position, *walls);
+				if (piece == walls->pieceFor(kWallEast | kWallWest)) {
+					ew = true;
+				} else if (piece == walls->pieceFor(kWallNorth | kWallSouth)) {
+					ns = true;
+				}
+			}
+		}
+	}
+	if (ew && !ns) {
+		return set.pieceFor(true);
+	}
+	if (ns && !ew) {
+		return set.pieceFor(false);
+	}
+	return set.pieceFor(ew);
+}
+
+bool ApplyDoorToTile(Tile& tile, uint16_t piece_id, const DoorSet& set) {
+	return ReplaceFamilyOnTile(tile, piece_id, [&](const Item& item) { return set.contains(item.getID()); });
+}
+
+bool RemoveDoorFromTile(Tile& tile, const DoorSet& set) {
+	return EraseFamilyFromTile(tile, [&](const Item& item) { return set.contains(item.getID()); });
+}
+
+bool TileHasTable(const Tile& tile, const TableSet& set) {
+	for (const Item& item : tile.getItems()) {
+		if (set.contains(item.getID())) {
+			return true;
+		}
+	}
+	return false;
+}
+
+uint8_t TableNeighborMask(const Map& map, const Position& position, const TableSet& set) {
+	uint8_t mask = 0;
+	const Position north(position.x, position.y - 1, position.z);
+	const Position east(position.x + 1, position.y, position.z);
+	const Position south(position.x, position.y + 1, position.z);
+	const Position west(position.x - 1, position.y, position.z);
+	if (const Tile* tile = map.getTile(north); tile && TileHasTable(*tile, set)) {
+		mask |= kWallNorth;
+	}
+	if (const Tile* tile = map.getTile(east); tile && TileHasTable(*tile, set)) {
+		mask |= kWallEast;
+	}
+	if (const Tile* tile = map.getTile(south); tile && TileHasTable(*tile, set)) {
+		mask |= kWallSouth;
+	}
+	if (const Tile* tile = map.getTile(west); tile && TileHasTable(*tile, set)) {
+		mask |= kWallWest;
+	}
+	return mask;
+}
+
+uint16_t ResolveTablePiece(const Map& map, const Position& position, const TableSet& set) {
+	return set.pieceFor(TableNeighborMask(map, position, set));
+}
+
+bool ApplyTableToTile(Tile& tile, uint16_t piece_id, const TableSet& set) {
+	return ReplaceFamilyOnTile(tile, piece_id, [&](const Item& item) { return set.contains(item.getID()); });
+}
+
+bool RemoveTableFromTile(Tile& tile, const TableSet& set) {
+	return EraseFamilyFromTile(tile, [&](const Item& item) { return set.contains(item.getID()); });
+}
+
+bool TileHasCarpet(const Tile& tile, const CarpetSet& set) {
+	for (const Item& item : tile.getItems()) {
+		if (set.contains(item.getID())) {
+			return true;
+		}
+	}
+	return false;
+}
+
+uint16_t ResolveCarpetPiece(const Map& map, const Position& position, const CarpetSet& set) {
+	auto same = [&](int dx, int dy) {
+		const Position next(position.x + dx, position.y + dy, position.z);
+		const Tile* tile = map.getTile(next);
+		return tile && TileHasCarpet(*tile, set);
+	};
+	return set.pieceFor(!same(0, -1), !same(1, 0), !same(0, 1), !same(-1, 0));
+}
+
+bool ApplyCarpetToTile(Tile& tile, uint16_t piece_id, const CarpetSet& set) {
+	return ReplaceFamilyOnTile(tile, piece_id, [&](const Item& item) { return set.contains(item.getID()); });
+}
+
+bool RemoveCarpetFromTile(Tile& tile, const CarpetSet& set) {
+	return EraseFamilyFromTile(tile, [&](const Item& item) { return set.contains(item.getID()); });
 }
 
 } // namespace core
