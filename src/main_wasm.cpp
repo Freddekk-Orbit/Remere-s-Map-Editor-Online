@@ -285,6 +285,20 @@ private:
 				if (ImGui::MenuItem("Paste at camera", "Ctrl+V", false, session_.hasClipboard())) {
 					session_.pasteAt(Position(session_.cameraX(), session_.cameraY(), session_.floor()));
 				}
+				ImGui::Separator();
+				if (ImGui::MenuItem("Rotate CW", "R", false, session_.selection().visible())) {
+					session_.rotateSelection(true);
+				}
+				if (ImGui::MenuItem("Rotate CCW", "Shift+R", false, session_.selection().visible())) {
+					session_.rotateSelection(false);
+				}
+				if (ImGui::MenuItem("Flip horizontal", "H", false, session_.selection().visible())) {
+					session_.flipSelection(true);
+				}
+				if (ImGui::MenuItem("Flip vertical", "V", false, session_.selection().visible())) {
+					session_.flipSelection(false);
+				}
+				ImGui::MenuItem("Replace items", nullptr, &show_find_);
 				ImGui::EndMenu();
 			}
 			if (ImGui::BeginMenu("View")) {
@@ -307,7 +321,7 @@ private:
 				ImGui::EndMenu();
 			}
 			if (ImGui::BeginMenu("Help")) {
-				ImGui::MenuItem("About Phase 14", nullptr, &show_about_);
+				ImGui::MenuItem("About Phase 15", nullptr, &show_about_);
 				ImGui::EndMenu();
 			}
 			ImGui::SameLine(ImGui::GetWindowWidth() - 220.0f);
@@ -354,6 +368,17 @@ private:
 		}
 		if (ImGui::IsKeyPressed(ImGuiKey_Delete, false)) {
 			session_.deleteSelection();
+		}
+		if (!io.WantTextInput && session_.selection().visible()) {
+			if (ImGui::IsKeyPressed(ImGuiKey_R, false)) {
+				session_.rotateSelection(!io.KeyShift);
+			}
+			if (ImGui::IsKeyPressed(ImGuiKey_H, false) && !io.KeyCtrl) {
+				session_.flipSelection(true);
+			}
+			if (ImGui::IsKeyPressed(ImGuiKey_V, false) && !io.KeyCtrl) {
+				session_.flipSelection(false);
+			}
 		}
 		if (ImGui::IsKeyPressed(ImGuiKey_LeftBracket, false)) {
 			session_.setBrushSize(session_.brushSize() - 2);
@@ -447,15 +472,15 @@ private:
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 16.0f, viewport->WorkPos.y + 28.0f), ImGuiCond_FirstUseEver);
 		ImGui::SetNextWindowSize(ImVec2(460.0f, 240.0f), ImGuiCond_FirstUseEver);
-		if (!ImGui::Begin("RME Wasm - Phase 14", nullptr, ImGuiWindowFlags_NoCollapse)) {
+		if (!ImGui::Begin("RME Wasm - Phase 15", nullptr, ImGuiWindowFlags_NoCollapse)) {
 			ImGui::End();
 			return;
 		}
 
 		ImGui::TextWrapped(
-			"Creature brush paints monsters into spawn.xml. One drag shares a spawn when tiles stay "
-			"inside its radius; otherwise a new spawn is created. Shift+click removes the creature "
-			"(and an empty spawn). Red dots are monsters, yellow circle is the radius."
+			"Select tiles, then rotate (R / Shift+R) or flip (H / V). Find items can replace one "
+			"item id with another on the selection or the whole map. Each transform or replace is "
+			"one undo step."
 		);
 		ImGui::Separator();
 		ImGui::Text("Map: %s  %dx%d  tiles=%zu  items=%zu%s",
@@ -497,9 +522,9 @@ private:
 		ImGui::TextUnformatted("Remere's Map Editor - WebAssembly port");
 		ImGui::Separator();
 		ImGui::TextWrapped(
-			"Phase 14 adds a Creature brush. Painting writes spawn.xml monsters, not OTBM items. "
-			"Pick a name and radius, then click tiles. Shift+click clears that tile's creature. "
-			"Spawn list edits still skip the tile undo stack."
+			"Phase 15 rotates and flips the current selection and can replace item ids. Transforms "
+			"move whole tiles (ground, overlays, house id, flags). Replace walks stacks and "
+			"container contents. Both go through undo."
 		);
 		ImGui::Spacing();
 		ImGui::BulletText("UI: Dear ImGui (SDL2 + OpenGL ES 3.0 / WebGL2)");
@@ -1329,6 +1354,17 @@ private:
 			show_properties_ = true;
 			props_stamp_ = 0;
 		}
+		ImGui::Separator();
+		ImGui::InputInt("Replace with", &replace_id_);
+		ImGui::Checkbox("Selection only", &replace_selection_);
+		if (ImGui::Button("Replace")) {
+			const std::size_t count = session_.replaceItems(
+				static_cast<uint16_t>(std::clamp(find_id_, 0, 65535)),
+				static_cast<uint16_t>(std::clamp(replace_id_, 0, 65535)),
+				replace_selection_
+			);
+			last_save_message_ = "Replaced " + std::to_string(count) + " item(s)";
+		}
 		ImGui::TextDisabled("0 means ignore that field. Ctrl+F opens this window.");
 		ImGui::End();
 	}
@@ -1735,6 +1771,23 @@ private:
 		if (ImGui::Button("Paste") && session_.hasClipboard()) {
 			session_.pasteAt(Position(session_.cameraX(), session_.cameraY(), session_.floor()));
 		}
+		if (session_.selection().visible()) {
+			if (ImGui::Button("Rot CW")) {
+				session_.rotateSelection(true);
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Rot CCW")) {
+				session_.rotateSelection(false);
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Flip H")) {
+				session_.flipSelection(true);
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Flip V")) {
+				session_.flipSelection(false);
+			}
+		}
 		ImGui::TextDisabled("Fill replaces 4-connected tiles with the same ground id.");
 		ImGui::TextDisabled("Flags paints PZ/PvP bits (green overlay). Shift+click clears.");
 		ImGui::TextDisabled("House paints magenta house tiles for the selected house id.");
@@ -1744,6 +1797,7 @@ private:
 		ImGui::TextDisabled("Door faces the nearby wall. Table and carpet auto-connect. Shift+click clears.");
 		ImGui::TextDisabled("Creature paints spawn.xml monsters. Shift+click removes that tile's creature.");
 		ImGui::TextDisabled("[ ] change size. Del deletes. Ctrl+C / X / V clipboard.");
+		ImGui::TextDisabled("R / Shift+R rotate selection. H / V flip. Find can replace item ids.");
 		ImGui::End();
 	}
 
@@ -1904,6 +1958,8 @@ private:
 	int find_aid_ = 0;
 	int find_uid_ = 0;
 	bool find_teleports_ = false;
+	int replace_id_ = 0;
+	bool replace_selection_ = true;
 	int container_add_id_ = 104;
 	ImVec4 clear_color_ = ImVec4(0.07f, 0.08f, 0.09f, 1.00f);
 	char fetch_url_[512] = "";

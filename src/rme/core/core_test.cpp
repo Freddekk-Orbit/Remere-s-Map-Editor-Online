@@ -946,7 +946,71 @@ int main() {
 		return Fail("spawn XML should keep painted creatures");
 	}
 
-	std::printf("rme core test ok: %zu tiles, creatures, map download zip, furniture\n",
+	tools.setBrushKind(rme::core::BrushKind::Ground);
+	tools.setBrushSize(1);
+	tools.setBrushId(100);
+	tools.beginStroke();
+	tools.strokeAt(Position(160, 180, z));
+	tools.strokeAt(Position(161, 180, z));
+	tools.endStroke();
+	tools.setBrushId(101);
+	tools.beginStroke();
+	tools.strokeAt(Position(160, 181, z));
+	tools.endStroke();
+	tools.selection().begin(Position(160, 180, z));
+	tools.selection().update(Position(161, 181, z));
+	tools.selection().finish();
+	if (!tools.rotateSelection(true)) {
+		return Fail("rotate CW failed");
+	}
+	const auto ground_id = [&](int x, int y) -> int {
+		const auto* tile = tools.map().getTile(Position(x, y, z));
+		if (!tile || !tile->getGround()) {
+			return 0;
+		}
+		return tile->getGround()->getID();
+	};
+	if (ground_id(161, 180) != 100 || ground_id(161, 181) != 100 || ground_id(160, 180) != 101) {
+		return Fail("CW rotate should turn the L");
+	}
+	if (ground_id(160, 181) != 0) {
+		return Fail("CW rotate should leave the old dirt cell empty");
+	}
+	if (!tools.undo()) {
+		return Fail("undo rotate failed");
+	}
+	if (ground_id(160, 180) != 100 || ground_id(161, 180) != 100 || ground_id(160, 181) != 101) {
+		return Fail("undo should restore the L");
+	}
+	tools.selection().begin(Position(160, 180, z));
+	tools.selection().update(Position(161, 181, z));
+	tools.selection().finish();
+	if (!tools.rotateSelection(true) || !tools.flipSelection(true)) {
+		return Fail("flip H failed");
+	}
+	if (ground_id(160, 180) != 100 || ground_id(161, 180) != 101 || ground_id(160, 181) != 100) {
+		return Fail("flip H should mirror the rotated L");
+	}
+
+	tools.selection().begin(Position(160, 180, z));
+	tools.selection().update(Position(161, 181, z));
+	tools.selection().finish();
+	if (tools.replaceItems(100, 102, true) != 2) {
+		return Fail("selection replace should change two grass tiles");
+	}
+	if (ground_id(160, 180) != 102 || ground_id(160, 181) != 102 || ground_id(161, 180) != 101) {
+		return Fail("replace should only change id 100");
+	}
+	if (tools.replaceItems(104, 105, false) == 0) {
+		return Fail("map replace should find flowers");
+	}
+	const auto* crate_tile = tools.map().getTile(Position(100, 100, z));
+	if (!crate_tile || crate_tile->getItems().empty() || crate_tile->getItems().front().getContents().empty()
+		|| crate_tile->getItems().front().getContents().front().getID() != 105) {
+		return Fail("replace should walk container contents");
+	}
+
+	std::printf("rme core test ok: %zu tiles, rotate/flip/replace, creatures, download zip\n",
 		reloaded.map().tileCount());
 	return 0;
 }

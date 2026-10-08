@@ -82,3 +82,8 @@ Port the C++ desktop Remere's Map Editor (https://github.com/opentibiabr/remeres
 - Creature brush lives in `src/rme/core`. It mutates spawn.xml monsters, not OTBM tiles. ImGui only sends Creature strokes and the selected name/radius.
 - Nearby tiles in one stroke share a spawn when they stay inside its radius. Shift+click removes the creature at that tile (and an empty spawn).
 - Spawn list edits still skip the tile undo stack.
+
+## Phase 15 Conventions
+- Selection rotate/flip and item replace live in `EditorSession`. ImGui only sends those actions.
+- Transforms move whole tiles (ground, overlays, house id, flags) and are one undo step. They must not leave the map.
+- `replaceItems` walks stacks and container contents. Selection-only is optional.

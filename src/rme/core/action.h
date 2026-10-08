@@ -20,6 +20,7 @@ enum class ActionIdentifier {
 	BrushStroke,
 	Fill,
 	Paste,
+	Transform,
 };
 
 struct TileChange {

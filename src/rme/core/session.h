@@ -124,6 +124,9 @@ public:
 	void pasteAt(const Position& position);
 	bool hasClipboard() const { return !clipboard_.empty(); }
 	std::size_t clipboardSize() const { return clipboard_.size(); }
+	bool rotateSelection(bool clockwise = true);
+	bool flipSelection(bool horizontal);
+	std::size_t replaceItems(uint16_t from_id, uint16_t to_id, bool selection_only = false);
 
 	bool canUndo() const { return history_.canUndo(); }
 	bool canRedo() const { return history_.canRedo(); }
@@ -214,6 +217,7 @@ private:
 	void strokeCarpetAt(const Position& position, bool invert);
 	void strokeCreatureAt(const Position& position, bool invert);
 	void removeCreaturesAt(const Position& position);
+	bool transformSelection(bool rotate, bool clockwise, bool horizontal);
 
 	Map map_;
 	ActionQueue history_;
