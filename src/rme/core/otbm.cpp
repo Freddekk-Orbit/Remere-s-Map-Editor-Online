@@ -526,7 +526,7 @@ bool SaveOTBM(const Map& map, const std::string& path) {
 bool WriteSampleOTBM(const std::string& path) {
 	Map map;
 	map.createEmpty(256, 256, "sample.otbm");
-	map.setDescription("RME Wasm Phase 9 sample map (tilesets, wall auto-connect)");
+	map.setDescription("RME Wasm Phase 10 sample map (ground auto-borders)");
 	map.setHouseFilename("houses.xml");
 	map.setSpawnFilename("spawn.xml");
 
@@ -568,6 +568,27 @@ bool WriteSampleOTBM(const std::string& path) {
 			tile.setGround(Item(ground_id));
 			if (ground_id == 102) {
 				tile.setFlag(TILESTATE_PROTECTIONZONE);
+				uint16_t shore = 0;
+				if (x == 99 && y == 99) {
+					shore = 117;
+				} else if (x == 100 && y == 99) {
+					shore = 110;
+				} else if (x == 101 && y == 99) {
+					shore = 114;
+				} else if (x == 99 && y == 100) {
+					shore = 113;
+				} else if (x == 101 && y == 100) {
+					shore = 111;
+				} else if (x == 99 && y == 101) {
+					shore = 116;
+				} else if (x == 100 && y == 101) {
+					shore = 112;
+				} else if (x == 101 && y == 101) {
+					shore = 115;
+				}
+				if (shore != 0) {
+					tile.addItem(Item(shore));
+				}
 			}
 			if (x == 102) {
 				tile.setHouseID(1);

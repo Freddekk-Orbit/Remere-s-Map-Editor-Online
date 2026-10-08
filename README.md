@@ -4,15 +4,14 @@ WebAssembly port of [Remere's Map Editor](https://github.com/opentibiabr/remeres
 
 This repository is a phased WebAssembly port. The original desktop editor is a wxWidgets + OpenGL application. The browser target removes that windowing stack and boots an ImGui render loop instead.
 
-## Phase 9 status
+## Phase 10 status
 
-- `materials.xml` tilesets group the item palette (Grounds / Walls / Items in the sample)
-- Wall brush auto-connects timber pieces from a 16-slot neighbor mask (N=1 E=2 S=4 W=8) mapped to pole / horizontal / vertical / junction
-- Auto on a wall item resolves to Wall. Shift+click removes that wall family and restitches neighbors. One undo action per drag, including restitch
-- Sample L-wall on existing tiles 100,98 / 101,98 / 101,99 (tile count stays 34). Cave wall 103 is not in the timber set
-- Host test: `rme_core_test` covers a 3-tile line → 107, south spur → 109, invert restitch to poles
+- Water auto-borders from `materials.xml` (`<ground>` with 4 edges + 4 outer corners)
+- Auto on water (or a shore piece) resolves to Border. Shift+click removes water and restitches neighbors. Fill uses the inner id, then restitches. Ground tool still paints raw water
+- Sample 3×3 pool keeps tile count 34 and already has shores (NW 117, N 110, NE 114, …; center has none)
+- Host test: `rme_core_test` covers a 2×2 pond → four corners, extend north → edge 110, invert restitch
 
-Phase 1–8 (build pipeline, OTBM/undo, sprites, brushes, minimap, houses/spawns, item props/find, browse-tile) remain underneath.
+Phase 1–9 (build pipeline, OTBM/undo, sprites, brushes, minimap, houses/spawns, item props/find, browse-tile, walls/tilesets) remain underneath.
 
 ## Repository layout
 

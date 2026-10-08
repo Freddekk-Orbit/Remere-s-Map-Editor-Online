@@ -192,6 +192,8 @@ private:
 	bool recordInspectTile(Tile after);
 	bool writeTileAfter(Action& action, const Position& position, Tile after);
 	void strokeWallAt(const Position& position, bool invert);
+	void strokeBorderAt(const Position& position, bool invert);
+	void restitchBorders(Action& action, const GroundBorderSet& set, const std::vector<Position>& seeds);
 
 	Map map_;
 	ActionQueue history_;

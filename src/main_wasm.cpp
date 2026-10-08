@@ -302,7 +302,7 @@ private:
 				ImGui::EndMenu();
 			}
 			if (ImGui::BeginMenu("Help")) {
-				ImGui::MenuItem("About Phase 9", nullptr, &show_about_);
+				ImGui::MenuItem("About Phase 10", nullptr, &show_about_);
 				ImGui::EndMenu();
 			}
 			ImGui::SameLine(ImGui::GetWindowWidth() - 220.0f);
@@ -430,15 +430,15 @@ private:
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 16.0f, viewport->WorkPos.y + 28.0f), ImGuiCond_FirstUseEver);
 		ImGui::SetNextWindowSize(ImVec2(460.0f, 240.0f), ImGuiCond_FirstUseEver);
-		if (!ImGui::Begin("RME Wasm - Phase 9", nullptr, ImGuiWindowFlags_NoCollapse)) {
+		if (!ImGui::Begin("RME Wasm - Phase 10", nullptr, ImGuiWindowFlags_NoCollapse)) {
 			ImGui::End();
 			return;
 		}
 
 		ImGui::TextWrapped(
-			"Tilesets group the item palette (materials.xml). Timber walls auto-connect: pick a wall "
-			"piece or the Wall tool and drag a line. Shift+click removes the wall family and restitches "
-			"neighbors. Sample L-wall: 100,98 / 101,98 / 101,99."
+			"Water auto-borders: Auto or Border on water paints shores against land (edges 110-113, "
+			"corners 114-117). The sample pool is already stitched. Shift+click removes water and "
+			"restitches neighbors. Ground tool still paints raw water with no shores."
 		);
 		ImGui::Separator();
 		ImGui::Text("Map: %s  %dx%d  tiles=%zu  items=%zu",
@@ -476,8 +476,8 @@ private:
 		ImGui::TextUnformatted("Remere's Map Editor - WebAssembly port");
 		ImGui::Separator();
 		ImGui::TextWrapped(
-			"Phase 9 adds materials.xml tilesets and a wall brush that auto-connects timber pieces from "
-			"neighbor masks (pole / horizontal / vertical / junction). Auto on a wall item becomes Wall. "
+			"Phase 10 adds ground auto-borders from materials.xml. Water (102) carries 4 edge + 4 outer "
+			"corner shore pieces. Auto on water becomes Border; fill uses the inner id then restitches. "
 			"Drag strokes stay one undo action, including neighbor restitch."
 		);
 		ImGui::Spacing();
@@ -1504,10 +1504,11 @@ private:
 			rme::core::BrushKind::Flags,
 			rme::core::BrushKind::House,
 			rme::core::BrushKind::Wall,
+			rme::core::BrushKind::Border,
 		};
-		for (int i = 0; i < 9; ++i) {
+		for (int i = 0; i < 10; ++i) {
 			if (i == 5) {
-				// Second row: Select / Flags / House / Wall
+				// Second row: Select / Flags / House / Wall / Border
 			} else if (i > 0) {
 				ImGui::SameLine();
 			}
@@ -1567,6 +1568,7 @@ private:
 		ImGui::TextDisabled("Flags paints PZ/PvP bits (green overlay). Shift+click clears.");
 		ImGui::TextDisabled("House paints magenta house tiles for the selected house id.");
 		ImGui::TextDisabled("Wall auto-connects timber pieces. Shift+click removes the family.");
+		ImGui::TextDisabled("Border paints water shores against land. Shift+click removes water.");
 		ImGui::TextDisabled("[ ] change size. Del deletes. Ctrl+C / X / V clipboard.");
 		ImGui::End();
 	}
@@ -1639,14 +1641,16 @@ private:
 			}
 			if (ImGui::IsItemHovered()) {
 				const bool is_wall = session_.materials().wallForItem(type->id) != nullptr;
-				ImGui::SetTooltip("%u %s\nsprite %u%s%s%s%s",
+				const bool is_border = session_.materials().borderForItem(type->id) != nullptr;
+				ImGui::SetTooltip("%u %s\nsprite %u%s%s%s%s%s",
 					type->id,
 					type->name.c_str(),
 					type->sprite_id,
 					type->ground ? "\nground" : "",
 					type->not_walkable ? "\nnot walkable" : "",
 					type->pickupable ? "\npickupable" : "",
-					is_wall ? "\nwall set" : "");
+					is_wall ? "\nwall set" : "",
+					is_border ? "\nborder set" : "");
 			}
 			ImGui::PopID();
 			++index;

@@ -58,6 +58,7 @@ struct ItemType {
 	bool pickupable = false;
 	bool container = false;
 	bool full_ground = false;
+	bool ground_border = false;
 	uint16_t ground_speed = 100;
 	uint16_t minimap_color = 0;
 	uint16_t sprite_id = 0;

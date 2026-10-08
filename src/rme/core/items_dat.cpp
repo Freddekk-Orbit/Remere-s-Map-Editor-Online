@@ -43,6 +43,30 @@ void ApplyBuiltinName(ItemType& type) {
 		case 109:
 			type.name = "Wall join";
 			break;
+		case 110:
+			type.name = "Shore n";
+			break;
+		case 111:
+			type.name = "Shore e";
+			break;
+		case 112:
+			type.name = "Shore s";
+			break;
+		case 113:
+			type.name = "Shore w";
+			break;
+		case 114:
+			type.name = "Shore ne";
+			break;
+		case 115:
+			type.name = "Shore se";
+			break;
+		case 116:
+			type.name = "Shore sw";
+			break;
+		case 117:
+			type.name = "Shore nw";
+			break;
 		default:
 			type.name = "Item " + std::to_string(type.id);
 			break;
@@ -113,6 +137,9 @@ void WriteThing(::FileWriteHandle& file, const ItemType& type) {
 	}
 	if (type.full_ground) {
 		file.addU8(DatAttrFullGround);
+	}
+	if (type.ground_border) {
+		file.addU8(DatAttrGroundBorder);
 	}
 	if (type.minimap_color != 0) {
 		file.addU8(DatAttrMinimapColor);
@@ -196,6 +223,18 @@ ItemType MakeSampleItem(uint16_t id) {
 			type.minimap_color = 86;
 			type.sprite_id = static_cast<uint16_t>(id - 99);
 			break;
+		case 110:
+		case 111:
+		case 112:
+		case 113:
+		case 114:
+		case 115:
+		case 116:
+		case 117:
+			type.ground_border = true;
+			type.not_moveable = true;
+			type.sprite_id = static_cast<uint16_t>(id - 99);
+			break;
 		default:
 			type.sprite_id = 1;
 			break;
@@ -269,6 +308,9 @@ bool ItemDatabase::parseThing(::FileReadHandle& file, ItemType& type) {
 				break;
 			case DatAttrFullGround:
 				type.full_ground = true;
+				break;
+			case DatAttrGroundBorder:
+				type.ground_border = true;
 				break;
 			case DatAttrMinimapColor:
 				if (!file.getU16(type.minimap_color)) {
@@ -416,7 +458,7 @@ bool ItemDatabase::writeSample(const std::string& path) {
 	}
 
 	constexpr uint32_t kSampleSignature = 0x00008600;
-	constexpr uint16_t kMaxItem = 109;
+	constexpr uint16_t kMaxItem = 117;
 	file.addU32(kSampleSignature);
 	file.addU16(kMaxItem);
 	file.addU16(0);

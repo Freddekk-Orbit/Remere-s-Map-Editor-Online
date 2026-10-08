@@ -27,6 +27,8 @@ const char* BrushKindName(BrushKind kind) {
 			return "House";
 		case BrushKind::Wall:
 			return "Wall";
+		case BrushKind::Border:
+			return "Border";
 		default:
 			return "Brush";
 	}

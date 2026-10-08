@@ -30,3 +30,4 @@ Port the C++ desktop Remere's Map Editor (https://github.com/opentibiabr/remeres
 - Item AID/UID/text/teleport/door edits stay in `src/rme/core` (`editTopItem` + `findNext`). ImGui only displays forms.
 - Tile stack browse, container contents, and map issues stay in `src/rme/core`. ImGui only lists `browseInspect` / `mapIssues`.
 - Tilesets and wall auto-connect stay in `src/rme/core` (`Materials`, Wall brush). ImGui only lists tilesets and paints wall strokes.
+- Ground auto-borders stay in `src/rme/core` (`GroundBorderSet`, Border brush). ImGui only sends border strokes; fill restitches after replacing inner ground.

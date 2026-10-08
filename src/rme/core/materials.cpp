@@ -1,6 +1,7 @@
 #include "materials.h"
 
 #include <fstream>
+#include <iterator>
 #include <sstream>
 
 namespace rme {
@@ -128,14 +129,23 @@ void WallSet::fillFromParts(uint16_t pole, uint16_t horizontal, uint16_t vertica
 	}
 }
 
+bool GroundBorderSet::containsBorder(uint16_t item_id) const {
+	if (item_id == 0) {
+		return false;
+	}
+	return item_id == edge_n || item_id == edge_e || item_id == edge_s || item_id == edge_w
+		|| item_id == corner_ne || item_id == corner_se || item_id == corner_sw || item_id == corner_nw;
+}
+
 void Materials::clear() {
 	tilesets_.clear();
 	walls_.clear();
+	borders_.clear();
 	error_.clear();
 }
 
 void Materials::ensureDefaults() {
-	if (!tilesets_.empty() || !walls_.empty()) {
+	if (!tilesets_.empty() || !walls_.empty() || !borders_.empty()) {
 		return;
 	}
 	WallSet timber;
@@ -143,7 +153,21 @@ void Materials::ensureDefaults() {
 	timber.fillFromParts(106, 107, 108, 109);
 	walls_.push_back(timber);
 
+	GroundBorderSet water;
+	water.name = "Water";
+	water.inner_id = 102;
+	water.edge_n = 110;
+	water.edge_e = 111;
+	water.edge_s = 112;
+	water.edge_w = 113;
+	water.corner_ne = 114;
+	water.corner_se = 115;
+	water.corner_sw = 116;
+	water.corner_nw = 117;
+	borders_.push_back(water);
+
 	tilesets_.push_back(Tileset{"Grounds", {100, 101, 102}});
+	tilesets_.push_back(Tileset{"Borders", {110, 111, 112, 113, 114, 115, 116, 117}});
 	tilesets_.push_back(Tileset{"Walls", {103, 106, 107, 108, 109}});
 	tilesets_.push_back(Tileset{"Items", {104, 105}});
 }
@@ -164,6 +188,15 @@ bool Materials::writeSample(const std::string& path) {
 					<< "\" pole=\"" << wall.pieceFor(0) << "\" horizontal=\"" << wall.pieceFor(kWallEast | kWallWest)
 					<< "\" vertical=\"" << wall.pieceFor(kWallNorth | kWallSouth) << "\" junction=\""
 					<< wall.pieceFor(15) << "\"/>\n";
+			}
+		}
+		if (set.name == "Grounds") {
+			for (const auto& border : borders_) {
+				out << "    <ground name=\"" << XmlEscape(border.name) << "\" lookid=\"" << border.inner_id
+					<< "\" inner=\"" << border.inner_id << "\" edge_n=\"" << border.edge_n << "\" edge_e=\""
+					<< border.edge_e << "\" edge_s=\"" << border.edge_s << "\" edge_w=\"" << border.edge_w
+					<< "\" corner_ne=\"" << border.corner_ne << "\" corner_se=\"" << border.corner_se
+					<< "\" corner_sw=\"" << border.corner_sw << "\" corner_nw=\"" << border.corner_nw << "\"/>\n";
 			}
 		}
 		for (uint16_t id : set.items) {
@@ -199,6 +232,7 @@ bool Materials::load(const std::string& path) {
 		const auto tileset_at = xml.find("<tileset", pos);
 		const auto item_at = xml.find("<item", pos);
 		const auto wall_at = xml.find("<wall", pos);
+		const auto ground_at = xml.find("<ground", pos);
 		std::size_t next = std::string::npos;
 		const char* kind = nullptr;
 		if (tileset_at != std::string::npos && (next == std::string::npos || tileset_at < next)) {
@@ -212,6 +246,10 @@ bool Materials::load(const std::string& path) {
 		if (wall_at != std::string::npos && (next == std::string::npos || wall_at < next)) {
 			next = wall_at;
 			kind = "wall";
+		}
+		if (ground_at != std::string::npos && (next == std::string::npos || ground_at < next)) {
+			next = ground_at;
+			kind = "ground";
 		}
 		if (next == std::string::npos) {
 			break;
@@ -241,10 +279,23 @@ bool Materials::load(const std::string& path) {
 			wall.fillFromParts(pole, horizontal, vertical, junction);
 			wall.look_id = static_cast<uint16_t>(AttrInt(tag, "lookid", pole));
 			walls_.push_back(std::move(wall));
+		} else if (std::string(kind) == "ground") {
+			GroundBorderSet border;
+			border.name = AttrString(tag, "name", "Ground");
+			border.inner_id = static_cast<uint16_t>(AttrInt(tag, "inner", AttrInt(tag, "lookid")));
+			border.edge_n = static_cast<uint16_t>(AttrInt(tag, "edge_n"));
+			border.edge_e = static_cast<uint16_t>(AttrInt(tag, "edge_e"));
+			border.edge_s = static_cast<uint16_t>(AttrInt(tag, "edge_s"));
+			border.edge_w = static_cast<uint16_t>(AttrInt(tag, "edge_w"));
+			border.corner_ne = static_cast<uint16_t>(AttrInt(tag, "corner_ne"));
+			border.corner_se = static_cast<uint16_t>(AttrInt(tag, "corner_se"));
+			border.corner_sw = static_cast<uint16_t>(AttrInt(tag, "corner_sw"));
+			border.corner_nw = static_cast<uint16_t>(AttrInt(tag, "corner_nw"));
+			borders_.push_back(std::move(border));
 		}
 	}
 
-	if (tilesets_.empty() && walls_.empty()) {
+	if (tilesets_.empty() && walls_.empty() && borders_.empty()) {
 		error_ = "materials.xml had no tilesets";
 		return false;
 	}
@@ -256,6 +307,15 @@ const WallSet* Materials::wallForItem(uint16_t item_id) const {
 	for (const auto& wall : walls_) {
 		if (wall.contains(item_id)) {
 			return &wall;
+		}
+	}
+	return nullptr;
+}
+
+const GroundBorderSet* Materials::borderForItem(uint16_t item_id) const {
+	for (const auto& border : borders_) {
+		if (border.contains(item_id)) {
+			return &border;
 		}
 	}
 	return nullptr;
@@ -331,6 +391,91 @@ bool RemoveWallFromTile(Tile& tile, const WallSet& set) {
 		}
 	}
 	return changed;
+}
+
+bool TileHasInnerGround(const Tile& tile, const GroundBorderSet& set) {
+	return tile.hasGround() && set.containsInner(tile.getGround()->getID());
+}
+
+std::vector<uint16_t> ResolveBorderPieces(const Map& map, const Position& position, const GroundBorderSet& set) {
+	std::vector<uint16_t> pieces;
+	const Tile* self = map.getTile(position);
+	if (!self || !TileHasInnerGround(*self, set)) {
+		return pieces;
+	}
+
+	auto same = [&](int dx, int dy) {
+		const Position next(position.x + dx, position.y + dy, position.z);
+		const Tile* tile = map.getTile(next);
+		return tile && TileHasInnerGround(*tile, set);
+	};
+	const bool n = !same(0, -1);
+	const bool e = !same(1, 0);
+	const bool s = !same(0, 1);
+	const bool w = !same(-1, 0);
+
+	if (n && e && set.corner_ne != 0) {
+		pieces.push_back(set.corner_ne);
+	}
+	if (e && s && set.corner_se != 0) {
+		pieces.push_back(set.corner_se);
+	}
+	if (s && w && set.corner_sw != 0) {
+		pieces.push_back(set.corner_sw);
+	}
+	if (w && n && set.corner_nw != 0) {
+		pieces.push_back(set.corner_nw);
+	}
+	if (n && !e && !w && set.edge_n != 0) {
+		pieces.push_back(set.edge_n);
+	}
+	if (e && !n && !s && set.edge_e != 0) {
+		pieces.push_back(set.edge_e);
+	}
+	if (s && !e && !w && set.edge_s != 0) {
+		pieces.push_back(set.edge_s);
+	}
+	if (w && !n && !s && set.edge_w != 0) {
+		pieces.push_back(set.edge_w);
+	}
+	return pieces;
+}
+
+bool RemoveBordersFromTile(Tile& tile, const GroundBorderSet& set) {
+	bool changed = false;
+	auto& items = tile.getItems();
+	for (auto it = items.begin(); it != items.end();) {
+		if (set.containsBorder(it->getID())) {
+			it = items.erase(it);
+			changed = true;
+		} else {
+			++it;
+		}
+	}
+	return changed;
+}
+
+bool ApplyBordersToTile(Tile& tile, const Map& map, const GroundBorderSet& set) {
+	const auto wanted = TileHasInnerGround(tile, set) ? ResolveBorderPieces(map, tile.getPosition(), set)
+													 : std::vector<uint16_t>{};
+	std::vector<uint16_t> have;
+	for (const Item& item : tile.getItems()) {
+		if (set.containsBorder(item.getID())) {
+			have.push_back(item.getID());
+		}
+	}
+	if (have == wanted) {
+		return false;
+	}
+	RemoveBordersFromTile(tile, set);
+	auto& items = tile.getItems();
+	std::vector<Item> borders;
+	borders.reserve(wanted.size());
+	for (uint16_t id : wanted) {
+		borders.emplace_back(id);
+	}
+	items.insert(items.begin(), std::make_move_iterator(borders.begin()), std::make_move_iterator(borders.end()));
+	return true;
 }
 
 } // namespace core
