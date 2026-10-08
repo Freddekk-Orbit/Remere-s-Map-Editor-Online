@@ -1332,8 +1332,8 @@ private:
 	void DrawFind() {
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 1210.0f, viewport->WorkPos.y + 500.0f), ImGuiCond_FirstUseEver);
-		ImGui::SetNextWindowSize(ImVec2(340.0f, 230.0f), ImGuiCond_FirstUseEver);
-		ImGui::SetNextWindowSizeConstraints(ImVec2(260.0f, 180.0f), ImVec2(FLT_MAX, FLT_MAX));
+		ImGui::SetNextWindowSize(ImVec2(340.0f, 360.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSizeConstraints(ImVec2(260.0f, 260.0f), ImVec2(FLT_MAX, FLT_MAX));
 		if (!ImGui::Begin("Find items", &show_find_)) {
 			ImGui::End();
 			return;
