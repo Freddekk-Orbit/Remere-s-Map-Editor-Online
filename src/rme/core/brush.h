@@ -20,6 +20,7 @@ enum class BrushKind {
 	House,
 	Wall,
 	Border,
+	Doodad,
 };
 
 const char* BrushKindName(BrushKind kind);

@@ -63,3 +63,7 @@ Port the C++ desktop Remere's Map Editor (https://github.com/opentibiabr/remeres
 - Ground auto-borders live in `src/rme/core` (`GroundBorderSet` in materials.xml). ImGui only sends Border strokes.
 - Shores are overlays on the inner ground (edges when one side is land, outer corners when two adjacent sides are land). Restitch painted cells and 4-neighbors in one stroke.
 - Auto on a bordered ground resolves to Border. Explicit Ground skips shores. Shift+border clears the inner ground and restitches.
+
+## Phase 11 Conventions
+- Doodad scatter lives in `src/rme/core` (`DoodadSet` in materials.xml). ImGui only sends doodad strokes.
+- Chance is a stable position hash, not `rand()`. Auto on a doodad item resolves to Doodad. Overlay still paints every tile. Shift+doodad removes the family.
