@@ -34,3 +34,5 @@ Port the C++ desktop Remere's Map Editor (https://github.com/opentibiabr/remeres
 - Doodad scatter stays in `src/rme/core` (`DoodadSet`). Chance is a stable position hash. ImGui only sends doodad strokes.
 - Door/table/carpet families stay in `src/rme/core`. Tables restitch like walls; carpets restitch one overlay piece; doors pick H/V from nearby walls.
 - Sample `.spr` is original 32×32 art only. Never vendor copyrighted Tibia client files. Grounds tile without a 1px outline.
+- Browser map download uses `DownloadVfsFile`. Zip packing (`saveMapZip`) stays in `src/rme/core` (OTBM + houses.xml + spawn.xml).
+- Map name/description are core fields. New-map size is clamped to OTBM min/max. ImGui only calls `EditorSession`.

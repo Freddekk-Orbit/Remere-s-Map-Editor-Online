@@ -92,9 +92,14 @@ public:
 	const Selection& selection() const { return selection_; }
 	const Minimap& minimap();
 
-	void newMap(int width = 256, int height = 256);
+	void newMap(int width = 256, int height = 256, std::string name = "Untitled.otbm");
 	bool loadOtbm(const std::string& path);
 	bool saveOtbm(const std::string& path);
+	bool saveMapZip(const std::string& path);
+	void setMapName(std::string name);
+	void setMapDescription(std::string description);
+	std::string otbmFileName() const;
+	std::string zipFileName() const;
 	bool loadDat(const std::string& path);
 	bool loadSpr(const std::string& path);
 	bool loadHouseXml(const std::string& path);

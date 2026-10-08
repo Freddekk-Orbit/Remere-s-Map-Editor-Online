@@ -30,6 +30,7 @@ set(RME_CORE_SOURCES
   src/rme/core/map_xml.cpp
   src/rme/core/materials.cpp
   src/rme/core/session.cpp
+  src/rme/core/zip.cpp
 )
 
 set(RME_GFX_SOURCES

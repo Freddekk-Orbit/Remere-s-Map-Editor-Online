@@ -1,5 +1,6 @@
 #include "session.h"
 #include "map_xml.h"
+#include "zip.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -14,15 +15,20 @@ EditorSession::EditorSession() {
 	newMap();
 }
 
-void EditorSession::newMap(int width, int height) {
+void EditorSession::newMap(int width, int height, std::string name) {
 	cancelStroke();
 	selection_.clear();
-	map_.createEmpty(width, height);
+	if (name.empty()) {
+		name = "Untitled.otbm";
+	}
+	map_.createEmpty(width, height, MapOtbmFileName(name));
+	map_.setHouseFilename("houses.xml");
+	map_.setSpawnFilename("spawn.xml");
 	history_.clear();
 	markMinimapDirty();
 	last_error_.clear();
-	camera_x_ = width / 2;
-	camera_y_ = height / 2;
+	camera_x_ = map_.getWidth() / 2;
+	camera_y_ = map_.getHeight() / 2;
 	floor_ = rme::MapGroundLayer;
 	inspect_ = Position(camera_x_, camera_y_, floor_);
 	inspect_index_ = -1;
@@ -68,10 +74,54 @@ bool EditorSession::saveOtbm(const std::string& path) {
 		last_error_ = "Wrote OTBM but failed to write house/spawn XML";
 		return false;
 	}
-	map_.setName(std::filesystem::path(path).filename().string());
+	map_.setName(MapOtbmFileName(std::filesystem::path(path).filename().string()));
 	map_.clearChanges();
 	last_error_.clear();
 	return true;
+}
+
+bool EditorSession::saveMapZip(const std::string& path) {
+	const auto dir = std::filesystem::path(path).parent_path();
+	const auto otbm_name = otbmFileName();
+	const auto otbm_path = dir.empty() ? otbm_name : (dir / otbm_name).string();
+	if (!saveOtbm(otbm_path)) {
+		return false;
+	}
+	const std::string houses = CompanionPath(otbm_path, map_.getHouseFilename(), "houses.xml");
+	const std::string spawns = CompanionPath(otbm_path, map_.getSpawnFilename(), "spawn.xml");
+	std::vector<ZipEntry> entries(3);
+	entries[0].name = otbm_name;
+	entries[1].name = std::filesystem::path(houses).filename().string();
+	entries[2].name = std::filesystem::path(spawns).filename().string();
+	if (!LoadFileBytes(otbm_path, entries[0].data) || !LoadFileBytes(houses, entries[1].data)
+		|| !LoadFileBytes(spawns, entries[2].data)) {
+		last_error_ = "Failed to read map files for zip";
+		return false;
+	}
+	if (!WriteStoreZip(path, entries)) {
+		last_error_ = "Failed to write " + path;
+		return false;
+	}
+	last_error_.clear();
+	return true;
+}
+
+void EditorSession::setMapName(std::string name) {
+	map_.setName(MapOtbmFileName(std::move(name)));
+	map_.markChanged();
+}
+
+void EditorSession::setMapDescription(std::string description) {
+	map_.setDescription(std::move(description));
+	map_.markChanged();
+}
+
+std::string EditorSession::otbmFileName() const {
+	return MapOtbmFileName(map_.getName());
+}
+
+std::string EditorSession::zipFileName() const {
+	return MapZipFileName(map_.getName());
 }
 
 bool EditorSession::loadDat(const std::string& path) {

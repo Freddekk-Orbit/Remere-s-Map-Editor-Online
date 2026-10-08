@@ -318,6 +318,40 @@ void OpenBrowserFilePicker() {
 #endif
 }
 
+bool DownloadVfsFile(const std::string& vfs_path, const std::string& filename) {
+	if (!FileExists(vfs_path)) {
+		Log("Download missing " + vfs_path);
+		return false;
+	}
+#ifdef __EMSCRIPTEN__
+	const std::string offered = filename.empty() ? std::filesystem::path(vfs_path).filename().string() : filename;
+	EM_ASM({
+		var path = UTF8ToString($0);
+		var name = UTF8ToString($1);
+		try {
+			var data = FS.readFile(path);
+			var blob = new Blob([data], {type: 'application/octet-stream'});
+			var url = URL.createObjectURL(blob);
+			var a = document.createElement('a');
+			a.href = url;
+			a.download = name;
+			document.body.appendChild(a);
+			a.click();
+			document.body.removeChild(a);
+			setTimeout(function() { URL.revokeObjectURL(url); }, 1500);
+		} catch (e) {
+			console.error('Download failed', e);
+		}
+	}, vfs_path.c_str(), offered.c_str());
+	Log("Offered download " + offered + " from " + vfs_path);
+	return true;
+#else
+	Log("Download is only available in the browser build (" + vfs_path + ")");
+	(void)filename;
+	return true;
+#endif
+}
+
 bool PersistUploadedFile(const std::string& vfs_path) {
 	if (!FileExists(vfs_path)) {
 		return false;

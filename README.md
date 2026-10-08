@@ -4,14 +4,14 @@ WebAssembly port of [Remere's Map Editor](https://github.com/opentibiabr/remeres
 
 This repository is a phased WebAssembly port. The original desktop editor is a wxWidgets + OpenGL application. The browser target removes that windowing stack and boots an ImGui render loop instead.
 
-## Phase 12 status
+## Phase 13 status
 
-- Door, table, and carpet brushes from `materials.xml`. Auto on those items resolves to the matching tool. Shift+click removes the family
-- Tables restitch like walls (single / h / v / join). Carpets restitch inner, 4 edges, and 4 corners. Doors pick horizontal vs vertical from nearby walls
-- Sample `Tibia.spr` is 33 original 32×32 drawings (seamless grass/dirt/water, wood furniture, red carpet). It is not a client file; drop your own `.spr` / `.dat` to use real graphics
-- Host test: `rme_core_test` covers door-on-wall, table restitch, 2×2 carpet corners, and invert undo
+- **File → Download map** (Ctrl+S) writes the OTBM plus `houses.xml` / `spawn.xml` into a zip, keeps a copy on IDBFS `/persist`, and offers a browser download
+- **File → Map properties** edits the map file name and OTBM description. Those fields round-trip through save/load
+- **File → New map** picks a name and size (minimum 256×256, the OTBM floor). Empty maps start with house/spawn XML names already set
+- Host test: `rme_core_test` covers new-map size/name, description round-trip, and unzip of the map bundle
 
-Phase 1–11 remain underneath.
+Phase 1–12 remain underneath.
 
 ## Repository layout
 
