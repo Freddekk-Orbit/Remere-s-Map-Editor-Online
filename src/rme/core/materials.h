@@ -47,6 +47,43 @@ struct DoodadSet {
 	uint16_t pick(const Position& position) const;
 };
 
+struct DoorSet {
+	std::string name = "Door";
+	uint16_t look_id = 0;
+	uint16_t horizontal = 0;
+	uint16_t vertical = 0;
+
+	bool contains(uint16_t item_id) const;
+	uint16_t pieceFor(bool horizontal_door) const;
+};
+
+struct TableSet {
+	std::string name = "Table";
+	uint16_t look_id = 0;
+	std::array<uint16_t, 16> piece{};
+
+	bool contains(uint16_t item_id) const;
+	uint16_t pieceFor(uint8_t mask) const;
+	void fillFromParts(uint16_t pole, uint16_t horizontal, uint16_t vertical, uint16_t junction);
+};
+
+struct CarpetSet {
+	std::string name = "Carpet";
+	uint16_t look_id = 0;
+	uint16_t inner_id = 0;
+	uint16_t edge_n = 0;
+	uint16_t edge_e = 0;
+	uint16_t edge_s = 0;
+	uint16_t edge_w = 0;
+	uint16_t corner_ne = 0;
+	uint16_t corner_se = 0;
+	uint16_t corner_sw = 0;
+	uint16_t corner_nw = 0;
+
+	bool contains(uint16_t item_id) const;
+	uint16_t pieceFor(bool n, bool e, bool s, bool w) const;
+};
+
 struct Tileset {
 	std::string name;
 	std::vector<uint16_t> items;
@@ -63,9 +100,15 @@ public:
 	const std::vector<WallSet>& walls() const { return walls_; }
 	const std::vector<GroundBorderSet>& borders() const { return borders_; }
 	const std::vector<DoodadSet>& doodads() const { return doodads_; }
+	const std::vector<DoorSet>& doors() const { return doors_; }
+	const std::vector<TableSet>& tables() const { return tables_; }
+	const std::vector<CarpetSet>& carpets() const { return carpets_; }
 	const WallSet* wallForItem(uint16_t item_id) const;
 	const GroundBorderSet* borderForItem(uint16_t item_id) const;
 	const DoodadSet* doodadForItem(uint16_t item_id) const;
+	const DoorSet* doorForItem(uint16_t item_id) const;
+	const TableSet* tableForItem(uint16_t item_id) const;
+	const CarpetSet* carpetForItem(uint16_t item_id) const;
 	const std::string& lastError() const { return error_; }
 
 private:
@@ -73,6 +116,9 @@ private:
 	std::vector<WallSet> walls_;
 	std::vector<GroundBorderSet> borders_;
 	std::vector<DoodadSet> doodads_;
+	std::vector<DoorSet> doors_;
+	std::vector<TableSet> tables_;
+	std::vector<CarpetSet> carpets_;
 	std::string error_;
 };
 
@@ -97,6 +143,22 @@ bool RemoveBordersFromTile(Tile& tile, const GroundBorderSet& set);
 bool DoodadHits(const Position& position, int chance);
 bool ApplyDoodadToTile(Tile& tile, uint16_t item_id);
 bool RemoveDoodadFromTile(Tile& tile, const DoodadSet& set);
+
+bool TileHasDoor(const Tile& tile, const DoorSet& set);
+uint16_t ResolveDoorPiece(const Map& map, const Position& position, const DoorSet& set, const WallSet* walls);
+bool ApplyDoorToTile(Tile& tile, uint16_t piece_id, const DoorSet& set);
+bool RemoveDoorFromTile(Tile& tile, const DoorSet& set);
+
+bool TileHasTable(const Tile& tile, const TableSet& set);
+uint8_t TableNeighborMask(const Map& map, const Position& position, const TableSet& set);
+uint16_t ResolveTablePiece(const Map& map, const Position& position, const TableSet& set);
+bool ApplyTableToTile(Tile& tile, uint16_t piece_id, const TableSet& set);
+bool RemoveTableFromTile(Tile& tile, const TableSet& set);
+
+bool TileHasCarpet(const Tile& tile, const CarpetSet& set);
+uint16_t ResolveCarpetPiece(const Map& map, const Position& position, const CarpetSet& set);
+bool ApplyCarpetToTile(Tile& tile, uint16_t piece_id, const CarpetSet& set);
+bool RemoveCarpetFromTile(Tile& tile, const CarpetSet& set);
 
 } // namespace core
 } // namespace rme

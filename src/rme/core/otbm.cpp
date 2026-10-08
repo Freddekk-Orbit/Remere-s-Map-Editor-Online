@@ -526,7 +526,7 @@ bool SaveOTBM(const Map& map, const std::string& path) {
 bool WriteSampleOTBM(const std::string& path) {
 	Map map;
 	map.createEmpty(256, 256, "sample.otbm");
-	map.setDescription("RME Wasm Phase 10 sample map (ground auto-borders)");
+	map.setDescription("RME Wasm Phase 12 sample map (furniture + sample sprites)");
 	map.setHouseFilename("houses.xml");
 	map.setSpawnFilename("spawn.xml");
 
@@ -608,6 +608,7 @@ bool WriteSampleOTBM(const std::string& path) {
 				tile.addItem(std::move(cover));
 			} else if (x == 100 && y == 98) {
 				tile.addItem(Item(107));
+				tile.addItem(Item(118));
 			} else if (x == 101 && y == 98) {
 				tile.addItem(Item(109));
 			} else if (x == 101 && y == 99) {
@@ -622,6 +623,10 @@ bool WriteSampleOTBM(const std::string& path) {
 				broken.setActionID(9);
 				broken.setDestination(Position(10, 10, rme::MapGroundLayer));
 				tile.addItem(std::move(broken));
+			} else if (x == 102 && y == 100) {
+				tile.addItem(Item(125));
+			} else if (x == 102 && y == 101) {
+				tile.addItem(Item(127));
 			} else if (x == 102 && y == 102) {
 				Item extra(104);
 				extra.setUniqueID(2000);

@@ -4,14 +4,14 @@ WebAssembly port of [Remere's Map Editor](https://github.com/opentibiabr/remeres
 
 This repository is a phased WebAssembly port. The original desktop editor is a wxWidgets + OpenGL application. The browser target removes that windowing stack and boots an ImGui render loop instead.
 
-## Phase 11 status
+## Phase 12 status
 
-- Doodad brushes from `materials.xml` (`<doodad name lookid chance items>`). Sample **Flowers** is item 104 at 60% chance
-- Auto on a doodad item resolves to Doodad. Overlay still paints every tile. Shift+click removes that doodad family
-- Scatter uses a stable position hash (not RNG), so the same tile always hits or misses. One undo action per drag
-- Host test: `rme_core_test` covers a hit tile, a miss tile, 3×3 scatter vs `DoodadHits`, and invert undo
+- Door, table, and carpet brushes from `materials.xml`. Auto on those items resolves to the matching tool. Shift+click removes the family
+- Tables restitch like walls (single / h / v / join). Carpets restitch inner, 4 edges, and 4 corners. Doors pick horizontal vs vertical from nearby walls
+- Sample `Tibia.spr` is 33 original 32×32 drawings (seamless grass/dirt/water, wood furniture, red carpet). It is not a client file; drop your own `.spr` / `.dat` to use real graphics
+- Host test: `rme_core_test` covers door-on-wall, table restitch, 2×2 carpet corners, and invert undo
 
-Phase 1–10 remain underneath.
+Phase 1–11 remain underneath.
 
 ## Repository layout
 

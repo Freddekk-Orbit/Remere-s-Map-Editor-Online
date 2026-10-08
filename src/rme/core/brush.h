@@ -21,6 +21,9 @@ enum class BrushKind {
 	Wall,
 	Border,
 	Doodad,
+	Door,
+	Table,
+	Carpet,
 };
 
 const char* BrushKindName(BrushKind kind);

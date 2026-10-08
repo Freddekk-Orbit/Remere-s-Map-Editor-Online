@@ -24,161 +24,319 @@ void PutPixel(std::vector<uint8_t>& rgba, int x, int y, uint8_t r, uint8_t g, ui
 	rgba[static_cast<std::size_t>(i) + 3] = a;
 }
 
-std::vector<uint8_t> MakePatternedSprite(uint32_t id) {
-	std::vector<uint8_t> rgba(static_cast<std::size_t>(kSpriteSize * kSpriteSize * 4), 0);
+void ClearMagenta(std::vector<uint8_t>& rgba) {
 	for (int y = 0; y < kSpriteSize; ++y) {
 		for (int x = 0; x < kSpriteSize; ++x) {
-			const bool border = x == 0 || y == 0 || x == kSpriteSize - 1 || y == kSpriteSize - 1;
-			uint8_t r = 0, g = 0, b = 0, a = 255;
-			switch (id) {
-				case 1: { // grass
-					const bool speck = ((x * 13 + y * 7) % 11) == 0;
-					r = speck ? 46 : 62;
-					g = speck ? 92 : 140;
-					b = speck ? 28 : 48;
-					if (border) {
-						r = 36;
-						g = 78;
-						b = 22;
-					}
-					break;
-				}
-				case 2: { // dirt
-					const bool speck = ((x * 5 + y * 11) % 9) == 0;
-					r = speck ? 96 : 132;
-					g = speck ? 70 : 96;
-					b = speck ? 36 : 48;
-					if (border) {
-						r = 78;
-						g = 52;
-						b = 28;
-					}
-					break;
-				}
-				case 3: { // water
-					const bool wave = ((x + y / 2) % 8) < 3;
-					r = wave ? 36 : 24;
-					g = wave ? 92 : 70;
-					b = wave ? 176 : 148;
-					if (border) {
-						r = 16;
-						g = 48;
-						b = 110;
-					}
-					break;
-				}
-				case 4: { // wall / brick
-					const bool mortar = (y % 8 == 0) || ((x + (y / 8) * 8) % 16 == 0);
-					r = mortar ? 70 : 118;
-					g = mortar ? 68 : 108;
-					b = mortar ? 66 : 98;
-					if (border) {
-						r = 48;
-						g = 46;
-						b = 44;
-					}
-					break;
-				}
-				case 5: { // flower
-					const int dx = x - 16;
-					const int dy = y - 14;
-					const int d2 = dx * dx + dy * dy;
-					if (d2 < 28) {
-						r = 220;
-						g = 72;
-						b = 118;
-					} else if (d2 < 70) {
-						r = 240;
-						g = 196;
-						b = 72;
-					} else if (y > 18 && x > 13 && x < 19) {
-						r = 48;
-						g = 120;
-						b = 42;
-					} else {
-						a = 0;
-						r = 255;
-						g = 0;
-						b = 255;
-					}
-					break;
-				}
-				case 6: { // box
-					if (x < 4 || x > 27 || y < 6 || y > 29) {
-						a = 0;
-						r = 255;
-						g = 0;
-						b = 255;
-					} else {
-						const bool lid = y < 12;
-						const bool edge = x == 4 || x == 27 || y == 6 || y == 11 || y == 29;
-						r = edge ? 92 : (lid ? 186 : 156);
-						g = edge ? 64 : (lid ? 132 : 108);
-						b = edge ? 32 : (lid ? 64 : 52);
-					}
-					break;
-				}
-				case 11:
-				case 12:
-				case 13:
-				case 14:
-				case 15:
-				case 16:
-				case 17:
-				case 18: { // water shores: N E S W / NE SE SW NW
-					const bool n = id == 11 || id == 15 || id == 18;
-					const bool e = id == 12 || id == 15 || id == 16;
-					const bool s = id == 13 || id == 16 || id == 17;
-					const bool w = id == 14 || id == 17 || id == 18;
-					const bool band = (n && y < 8) || (e && x >= 24) || (s && y >= 24) || (w && x < 8);
-					if (band) {
-						const bool foam = ((x + y) % 4) == 0;
-						r = foam ? 236 : 198;
-						g = foam ? 214 : 168;
-						b = foam ? 126 : 88;
-					} else {
-						a = 0;
-						r = 255;
-						g = 0;
-						b = 255;
-					}
-					break;
-				}
-				case 7:
-				case 8:
-				case 9:
-				case 10: { // timber pole / h / v / junction
-					const bool hbeam = (id == 8 || id == 10) && y >= 12 && y <= 19;
-					const bool vbeam = (id == 9 || id == 10) && x >= 12 && x <= 19;
-					const bool pole = id == 7 && x >= 11 && x <= 20 && y >= 11 && y <= 20;
-					if (hbeam || vbeam || pole) {
-						const bool grain = ((x + y) % 5) == 0;
-						const bool edge = (hbeam && (y == 12 || y == 19)) || (vbeam && (x == 12 || x == 19))
-							|| (pole && (x == 11 || x == 20 || y == 11 || y == 20));
-						r = edge ? 92 : (grain ? 168 : 150);
-						g = edge ? 62 : (grain ? 112 : 96);
-						b = edge ? 28 : (grain ? 54 : 42);
-					} else {
-						a = 0;
-						r = 255;
-						g = 0;
-						b = 255;
-					}
-					break;
-				}
-				default:
-					r = static_cast<uint8_t>(40 + (id * 37) % 140);
-					g = static_cast<uint8_t>(70 + (id * 17) % 120);
-					b = static_cast<uint8_t>(50 + (id * 53) % 130);
-					if (border) {
-						r = static_cast<uint8_t>(r / 2);
-						g = static_cast<uint8_t>(g / 2);
-						b = static_cast<uint8_t>(b / 2);
-					}
-					break;
-			}
-			PutPixel(rgba, x, y, r, g, b, a);
+			PutPixel(rgba, x, y, 255, 0, 255, 0);
 		}
+	}
+}
+
+uint8_t Hash8(int x, int y, int salt) {
+	return static_cast<uint8_t>((x * 37 + y * 17 + salt * 13) & 255);
+}
+
+void WoodPixel(uint8_t& r, uint8_t& g, uint8_t& b, int x, int y, bool dark_edge) {
+	const bool grain = ((x + y / 2) % 6) == 0;
+	r = dark_edge ? 86 : (grain ? 168 : 150);
+	g = dark_edge ? 54 : (grain ? 108 : 92);
+	b = dark_edge ? 24 : (grain ? 48 : 38);
+}
+
+void DrawGround(std::vector<uint8_t>& rgba, uint32_t id) {
+	for (int y = 0; y < kSpriteSize; ++y) {
+		for (int x = 0; x < kSpriteSize; ++x) {
+			uint8_t r = 0, g = 0, b = 0;
+			if (id == 1) {
+				const uint8_t h = Hash8(x, y, 3);
+				r = static_cast<uint8_t>(48 + (h % 22));
+				g = static_cast<uint8_t>(96 + (h % 40));
+				b = static_cast<uint8_t>(28 + (h % 16));
+				if (h > 230) {
+					r = 92;
+					g = 148;
+					b = 36;
+				}
+			} else if (id == 2) {
+				const uint8_t h = Hash8(x, y, 9);
+				r = static_cast<uint8_t>(118 + (h % 28));
+				g = static_cast<uint8_t>(82 + (h % 20));
+				b = static_cast<uint8_t>(42 + (h % 14));
+				if (h > 240) {
+					r = 86;
+					g = 62;
+					b = 32;
+				}
+			} else {
+				const bool wave = ((x + (y / 3) * 2) % 10) < 4;
+				r = wave ? 32 : 20;
+				g = wave ? 88 : 64;
+				b = wave ? 168 : 140;
+				if (((x + y) % 17) == 0) {
+					r = 48;
+					g = 120;
+					b = 196;
+				}
+			}
+			PutPixel(rgba, x, y, r, g, b);
+		}
+	}
+}
+
+void DrawBrick(std::vector<uint8_t>& rgba) {
+	for (int y = 0; y < kSpriteSize; ++y) {
+		for (int x = 0; x < kSpriteSize; ++x) {
+			const int row = y / 8;
+			const int shift = (row % 2) * 8;
+			const bool mortar = (y % 8 == 0) || ((x + shift) % 16 == 0);
+			const uint8_t h = Hash8(x, y, 4) % 18;
+			PutPixel(rgba, x, y, mortar ? 64 : static_cast<uint8_t>(128 + h), mortar ? 60 : static_cast<uint8_t>(108 + h / 2),
+				mortar ? 56 : static_cast<uint8_t>(92 + h / 3));
+		}
+	}
+}
+
+void DrawFlower(std::vector<uint8_t>& rgba) {
+	ClearMagenta(rgba);
+	for (int y = 20; y < 31; ++y) {
+		PutPixel(rgba, 16, y, 42, 112, 38);
+		PutPixel(rgba, 15, y, 36, 96, 32);
+	}
+	PutPixel(rgba, 12, 24, 48, 132, 44);
+	PutPixel(rgba, 11, 24, 48, 132, 44);
+	PutPixel(rgba, 12, 25, 40, 110, 36);
+	PutPixel(rgba, 20, 23, 48, 132, 44);
+	PutPixel(rgba, 21, 23, 40, 110, 36);
+	const int petals[8][2] = {{16, 8}, {20, 10}, {22, 14}, {20, 18}, {16, 20}, {12, 18}, {10, 14}, {12, 10}};
+	for (const auto& p : petals) {
+		for (int dy = -3; dy <= 3; ++dy) {
+			for (int dx = -3; dx <= 3; ++dx) {
+				if (dx * dx + dy * dy <= 8) {
+					PutPixel(rgba, p[0] + dx, p[1] + dy, 220, 58, 78);
+				}
+			}
+		}
+	}
+	for (int dy = -3; dy <= 3; ++dy) {
+		for (int dx = -3; dx <= 3; ++dx) {
+			if (dx * dx + dy * dy <= 6) {
+				PutPixel(rgba, 16 + dx, 14 + dy, 236, 196, 48);
+			}
+		}
+	}
+}
+
+void DrawBox(std::vector<uint8_t>& rgba) {
+	ClearMagenta(rgba);
+	for (int y = 7; y <= 29; ++y) {
+		for (int x = 5; x <= 26; ++x) {
+			const bool lid = y <= 12;
+			const bool edge = x == 5 || x == 26 || y == 7 || y == 12 || y == 29;
+			uint8_t r, g, b;
+			WoodPixel(r, g, b, x, y, edge);
+			if (lid && !edge) {
+				r = static_cast<uint8_t>(r + 20);
+				g = static_cast<uint8_t>(g + 14);
+			}
+			PutPixel(rgba, x, y, r, g, b);
+		}
+	}
+}
+
+void DrawTimber(std::vector<uint8_t>& rgba, uint32_t id) {
+	ClearMagenta(rgba);
+	const bool hbeam = id == 8 || id == 10;
+	const bool vbeam = id == 9 || id == 10;
+	const bool pole = id == 7;
+	for (int y = 0; y < kSpriteSize; ++y) {
+		for (int x = 0; x < kSpriteSize; ++x) {
+			const bool h = hbeam && y >= 11 && y <= 20;
+			const bool v = vbeam && x >= 11 && x <= 20;
+			const bool p = pole && x >= 10 && x <= 21 && y >= 10 && y <= 21;
+			if (!(h || v || p)) {
+				continue;
+			}
+			const bool edge = (h && (y == 11 || y == 20)) || (v && (x == 11 || x == 20))
+				|| (p && (x == 10 || x == 21 || y == 10 || y == 21));
+			uint8_t r, g, b;
+			WoodPixel(r, g, b, x, y, edge);
+			PutPixel(rgba, x, y, r, g, b);
+		}
+	}
+}
+
+void DrawShore(std::vector<uint8_t>& rgba, uint32_t id) {
+	ClearMagenta(rgba);
+	const bool n = id == 11 || id == 15 || id == 18;
+	const bool e = id == 12 || id == 15 || id == 16;
+	const bool s = id == 13 || id == 16 || id == 17;
+	const bool w = id == 14 || id == 17 || id == 18;
+	for (int y = 0; y < kSpriteSize; ++y) {
+		for (int x = 0; x < kSpriteSize; ++x) {
+			const bool band = (n && y < 9) || (e && x >= 23) || (s && y >= 23) || (w && x < 9);
+			if (!band) {
+				continue;
+			}
+			const uint8_t h = Hash8(x, y, 2);
+			const bool foam = (h % 5) == 0;
+			PutPixel(rgba, x, y, foam ? 232 : static_cast<uint8_t>(186 + h % 24),
+				foam ? 208 : static_cast<uint8_t>(150 + h % 20), foam ? 118 : static_cast<uint8_t>(78 + h % 16));
+		}
+	}
+}
+
+void DrawDoor(std::vector<uint8_t>& rgba, bool horizontal) {
+	ClearMagenta(rgba);
+	const int x0 = horizontal ? 2 : 9;
+	const int x1 = horizontal ? 29 : 22;
+	const int y0 = horizontal ? 8 : 2;
+	const int y1 = horizontal ? 23 : 29;
+	for (int y = y0; y <= y1; ++y) {
+		for (int x = x0; x <= x1; ++x) {
+			const bool edge = x == x0 || x == x1 || y == y0 || y == y1;
+			const bool panel = horizontal ? ((x - x0) % 7 == 0) : ((y - y0) % 7 == 0);
+			uint8_t r, g, b;
+			WoodPixel(r, g, b, x, y, edge || panel);
+			PutPixel(rgba, x, y, r, g, b);
+		}
+	}
+	if (horizontal) {
+		PutPixel(rgba, 24, 15, 196, 164, 48);
+		PutPixel(rgba, 25, 15, 196, 164, 48);
+		PutPixel(rgba, 24, 16, 160, 128, 32);
+	} else {
+		PutPixel(rgba, 18, 16, 196, 164, 48);
+		PutPixel(rgba, 19, 16, 196, 164, 48);
+		PutPixel(rgba, 18, 17, 160, 128, 32);
+	}
+}
+
+void DrawTable(std::vector<uint8_t>& rgba, uint32_t id) {
+	ClearMagenta(rgba);
+	const bool h = id == 22 || id == 24;
+	const bool v = id == 23 || id == 24;
+	const bool single = id == 21;
+	const int top0 = 10;
+	const int top1 = 21;
+	for (int y = top0; y <= top1; ++y) {
+		for (int x = (h || single ? 0 : 8); x <= (h || single ? 31 : 23); ++x) {
+			if (!(h || single) && (x < 8 || x > 23)) {
+				continue;
+			}
+			if (!(v || single) && (y < top0 || y > top1) && !(h)) {
+				continue;
+			}
+			const bool edge = y == top0 || y == top1 || ((single || !h) && (x == 8 || x == 23))
+				|| (single && (x == 0 || x == 31));
+			uint8_t r, g, b;
+			WoodPixel(r, g, b, x, y, edge);
+			r = static_cast<uint8_t>(std::min(255, r + 18));
+			g = static_cast<uint8_t>(std::min(255, g + 10));
+			PutPixel(rgba, x, y, r, g, b);
+		}
+	}
+	if (v) {
+		for (int y = 0; y < kSpriteSize; ++y) {
+			for (int x = 10; x <= 21; ++x) {
+				if (y >= top0 && y <= top1) {
+					continue;
+				}
+				uint8_t r, g, b;
+				WoodPixel(r, g, b, x, y, x == 10 || x == 21);
+				r = static_cast<uint8_t>(std::min(255, r + 18));
+				g = static_cast<uint8_t>(std::min(255, g + 10));
+				PutPixel(rgba, x, y, r, g, b);
+			}
+		}
+	}
+	if (single || (!h && !v)) {
+		for (int y = 22; y <= 29; ++y) {
+			PutPixel(rgba, 9, y, 96, 62, 28);
+			PutPixel(rgba, 22, y, 96, 62, 28);
+		}
+	}
+}
+
+void DrawCarpet(std::vector<uint8_t>& rgba, uint32_t id) {
+	const bool n = id == 26 || id == 30 || id == 33;
+	const bool e = id == 27 || id == 30 || id == 31;
+	const bool s = id == 28 || id == 31 || id == 32;
+	const bool w = id == 29 || id == 32 || id == 33;
+	const bool inner = id == 25;
+	for (int y = 0; y < kSpriteSize; ++y) {
+		for (int x = 0; x < kSpriteSize; ++x) {
+			const bool trim = (!inner) && ((n && y < 4) || (e && x >= 28) || (s && y >= 28) || (w && x < 4));
+			const uint8_t h = Hash8(x, y, 7);
+			uint8_t r = trim ? 92 : static_cast<uint8_t>(148 + (h % 18));
+			uint8_t g = trim ? 24 : static_cast<uint8_t>(36 + (h % 10));
+			uint8_t b = trim ? 24 : static_cast<uint8_t>(36 + (h % 8));
+			if (!trim && ((x + y) % 8 == 0)) {
+				r = static_cast<uint8_t>(r + 20);
+			}
+			PutPixel(rgba, x, y, r, g, b);
+		}
+	}
+}
+
+std::vector<uint8_t> MakePatternedSprite(uint32_t id) {
+	std::vector<uint8_t> rgba(static_cast<std::size_t>(kSpriteSize * kSpriteSize * 4), 0);
+	switch (id) {
+		case 1:
+		case 2:
+		case 3:
+			DrawGround(rgba, id);
+			break;
+		case 4:
+			DrawBrick(rgba);
+			break;
+		case 5:
+			DrawFlower(rgba);
+			break;
+		case 6:
+			DrawBox(rgba);
+			break;
+		case 7:
+		case 8:
+		case 9:
+		case 10:
+			DrawTimber(rgba, id);
+			break;
+		case 11:
+		case 12:
+		case 13:
+		case 14:
+		case 15:
+		case 16:
+		case 17:
+		case 18:
+			DrawShore(rgba, id);
+			break;
+		case 19:
+			DrawDoor(rgba, true);
+			break;
+		case 20:
+			DrawDoor(rgba, false);
+			break;
+		case 21:
+		case 22:
+		case 23:
+		case 24:
+			DrawTable(rgba, id);
+			break;
+		case 25:
+		case 26:
+		case 27:
+		case 28:
+		case 29:
+		case 30:
+		case 31:
+		case 32:
+		case 33:
+			DrawCarpet(rgba, id);
+			break;
+		default:
+			ClearMagenta(rgba);
+			break;
 	}
 	return rgba;
 }
@@ -360,7 +518,7 @@ bool SpriteSheet::writeSample(const std::string& path) {
 	}
 
 	constexpr uint32_t kSampleSignature = 0x00008600;
-	constexpr uint16_t kCount = 18;
+	constexpr uint16_t kCount = 33;
 
 	clear();
 	count_ = kCount;
