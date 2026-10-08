@@ -94,12 +94,18 @@ int main() {
 		return 1;
 	}
 	const auto* center = session.map().getTile(Position(100, 100, session.floor()));
-	if (!center || !center->getGround() || center->getItems().size() != 1 || center->getItems().front().getID() != 105) {
-		return Fail("sample map center should have a box overlay");
+	if (!center || !center->getGround() || center->getItems().size() != 2 || center->getItems().front().getID() != 105
+		|| center->getItems().back().getID() != 104) {
+		return Fail("sample map center should stack crate then cover flower");
 	}
 	if (center->getItems().front().getActionID() != 1000 || center->getItems().front().getUniqueID() != 2000
-		|| center->getItems().front().getText() != "Phase 7 crate") {
+		|| center->getItems().front().getText() != "Phase 8 crate") {
 		return Fail("sample crate should have AID/UID/text");
+	}
+	if (center->getItems().front().getContents().size() != 1
+		|| center->getItems().front().getContents().front().getID() != 104
+		|| center->getItems().front().getContents().front().getCount() != 3) {
+		return Fail("sample crate should contain three flowers");
 	}
 	const auto* portal = session.map().getTile(Position(99, 102, session.floor()));
 	if (!portal || portal->getItems().empty() || !portal->getItems().front().hasDestination()
@@ -392,10 +398,12 @@ int main() {
 		return Fail("house tile OTBM roundtrip failed");
 	}
 	const auto* crate_reload = xml_reload.map().getTile(Position(100, 100, rme::MapGroundLayer));
-	if (!crate_reload || crate_reload->getItems().empty() || crate_reload->getItems().front().getActionID() != 1000
+	if (!crate_reload || crate_reload->getItems().size() < 2 || crate_reload->getItems().front().getActionID() != 1000
 		|| crate_reload->getItems().front().getUniqueID() != 2000
-		|| crate_reload->getItems().front().getText() != "Phase 7 crate") {
-		return Fail("OTBM roundtrip lost crate attributes");
+		|| crate_reload->getItems().front().getText() != "Phase 8 crate"
+		|| crate_reload->getItems().front().getContents().size() != 1
+		|| crate_reload->getItems().front().getContents().front().getCount() != 3) {
+		return Fail("OTBM roundtrip lost crate attributes or container contents");
 	}
 	const auto* portal_reload = xml_reload.map().getTile(Position(99, 102, rme::MapGroundLayer));
 	if (!portal_reload || portal_reload->getItems().empty() || !portal_reload->getItems().front().hasDestination()
@@ -420,22 +428,81 @@ int main() {
 	}
 	rme::core::FindQuery find_tp;
 	find_tp.teleports_only = true;
-	if (session.findTiles(find_tp).size() != 1) {
-		return Fail("exactly one sample teleport");
+	if (session.findTiles(find_tp).size() != 2) {
+		return Fail("sample should have a cave portal and a broken teleport");
+	}
+	rme::core::FindQuery find_loot;
+	find_loot.item_id = 104;
+	bool found_crate_loot = false;
+	for (const auto& pos : session.findTiles(find_loot)) {
+		if (pos.x == 100 && pos.y == 100) {
+			found_crate_loot = true;
+		}
+	}
+	if (!found_crate_loot) {
+		return Fail("find should see flowers inside the crate");
 	}
 
 	session.setInspect(Position(100, 100, rme::MapGroundLayer));
+	if (session.browseInspect().size() != 3 || session.inspectItem() == nullptr || session.inspectItem()->getID() != 104) {
+		return Fail("browse stack should default to the top cover flower");
+	}
+	session.setInspectIndex(1);
+	if (!session.inspectItem() || session.inspectItem()->getID() != 105) {
+		return Fail("inspect index 1 should be the crate");
+	}
 	auto props = rme::core::PropsFromItem(*session.inspectItem());
 	props.action_id = 42;
-	if (!session.editTopItem(props) || session.map().getTile(Position(100, 100, rme::MapGroundLayer))->topItem()->getActionID() != 42) {
-		return Fail("editTopItem should set action id");
+	if (!session.editTopItem(props)
+		|| session.map().getTile(Position(100, 100, rme::MapGroundLayer))->stackItem(1)->getActionID() != 42) {
+		return Fail("editTopItem should set the selected crate action id");
 	}
 	session.undo();
-	if (session.map().getTile(Position(100, 100, rme::MapGroundLayer))->topItem()->getActionID() != 1000) {
+	if (session.map().getTile(Position(100, 100, rme::MapGroundLayer))->stackItem(1)->getActionID() != 1000) {
 		return Fail("undo should restore crate action id");
 	}
 
-	std::printf("rme core test ok: %zu tiles, item props, find, teleports, houses/spawns, brushes\n",
+	session.setInspectIndex(2);
+	if (!session.moveInspectItem(-1)
+		|| session.map().getTile(Position(100, 100, rme::MapGroundLayer))->getItems().front().getID() != 104) {
+		return Fail("moveInspectItem should lower the cover flower");
+	}
+	session.undo();
+	if (session.map().getTile(Position(100, 100, rme::MapGroundLayer))->getItems().front().getID() != 105) {
+		return Fail("undo should restore overlay order");
+	}
+
+	session.setInspectIndex(1);
+	if (!session.addContainerItem(103, 1)
+		|| session.map().getTile(Position(100, 100, rme::MapGroundLayer))->stackItem(1)->getContents().size() != 2) {
+		return Fail("addContainerItem should append loot");
+	}
+	if (!session.removeContainerItem(1)
+		|| session.map().getTile(Position(100, 100, rme::MapGroundLayer))->stackItem(1)->getContents().size() != 1) {
+		return Fail("removeContainerItem should drop the extra loot");
+	}
+	session.undo();
+	session.undo();
+
+	const auto issues = session.mapIssues();
+	bool saw_dup = false;
+	bool saw_tp = false;
+	for (const auto& issue : issues) {
+		if (issue.kind == rme::core::MapIssueKind::DuplicateUniqueId && issue.unique_id == 2000) {
+			saw_dup = true;
+		}
+		if (issue.kind == rme::core::MapIssueKind::InvalidTeleport && issue.position.x == 98) {
+			saw_tp = true;
+		}
+	}
+	if (!saw_dup || !saw_tp) {
+		return Fail("mapIssues should report duplicate UID 2000 and the empty teleport");
+	}
+	if (!session.goToIssue(0)) {
+		return Fail("goToIssue should jump the camera");
+	}
+
+	std::printf("rme core test ok: %zu tiles, browse/containers, map issues, item props, find, teleports\n",
 		reloaded.map().tileCount());
 	return 0;
 }

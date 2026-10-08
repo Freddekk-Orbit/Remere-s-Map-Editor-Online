@@ -3,6 +3,9 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <functional>
+#include <sstream>
+#include <unordered_map>
 
 namespace rme {
 namespace core {
@@ -22,6 +25,7 @@ void EditorSession::newMap(int width, int height) {
 	camera_y_ = height / 2;
 	floor_ = rme::MapGroundLayer;
 	inspect_ = Position(camera_x_, camera_y_, floor_);
+	inspect_index_ = -1;
 }
 
 bool EditorSession::loadOtbm(const std::string& path) {
@@ -37,6 +41,7 @@ bool EditorSession::loadOtbm(const std::string& path) {
 	markMinimapDirty();
 	centerOnOccupied();
 	inspect_ = Position(camera_x_, camera_y_, floor_);
+	inspect_index_ = -1;
 	LoadHouseXml(map_, CompanionPath(path, map_.getHouseFilename(), "houses.xml"));
 	LoadSpawnXml(map_, CompanionPath(path, map_.getSpawnFilename(), "spawn.xml"));
 	if (!map_.houses().empty()) {
@@ -281,7 +286,7 @@ void EditorSession::fillAt(const Position& position) {
 }
 
 bool EditorSession::pickAt(const Position& position) {
-	inspect_ = position;
+	setInspect(position);
 	const Tile* tile = map_.getTile(position);
 	if (!tile) {
 		return false;
@@ -415,7 +420,7 @@ void EditorSession::panBy(int dx, int dy) {
 void EditorSession::goTo(int x, int y, int z) {
 	setFloor(z);
 	setCamera(x, y);
-	inspect_ = Position(camera_x_, camera_y_, floor_);
+	setInspect(Position(camera_x_, camera_y_, floor_));
 }
 
 void EditorSession::setFloor(int floor) {
@@ -464,7 +469,7 @@ void EditorSession::centerOnOccupied() {
 	if (count > 0) {
 		setCamera(static_cast<int>(sx / count), static_cast<int>(sy / count));
 		setFloor(preferred_floor);
-		inspect_ = Position(camera_x_, camera_y_, floor_);
+		setInspect(Position(camera_x_, camera_y_, floor_));
 	}
 }
 
@@ -659,38 +664,82 @@ bool EditorSession::addSpawnMonster(std::size_t spawn_index, std::string name, i
 	return true;
 }
 
-const Item* EditorSession::inspectItem() const {
-	const Tile* tile = map_.getTile(inspect_);
-	return tile ? tile->topItem() : nullptr;
+void EditorSession::setInspect(const Position& position) {
+	inspect_ = position;
+	inspect_index_ = -1;
 }
 
-bool EditorSession::editTopItem(const ItemProps& props) {
-	endStroke();
-	Tile* tile = map_.getTile(inspect_);
-	if (!tile || !tile->topItem()) {
-		last_error_ = "No item at inspect tile";
-		return false;
+void EditorSession::clampInspectIndex() {
+	const Tile* tile = map_.getTile(inspect_);
+	if (!tile || tile->stackCount() == 0) {
+		inspect_index_ = 0;
+		return;
 	}
-	if (PropsFromItem(*tile->topItem()).action_id == props.action_id
-		&& PropsFromItem(*tile->topItem()).unique_id == props.unique_id
-		&& PropsFromItem(*tile->topItem()).count == (props.count == 0 ? 1 : props.count)
-		&& PropsFromItem(*tile->topItem()).charges == props.charges
-		&& PropsFromItem(*tile->topItem()).depot_id == props.depot_id
-		&& PropsFromItem(*tile->topItem()).door_id == props.door_id
-		&& PropsFromItem(*tile->topItem()).has_destination == props.has_destination
-		&& (!props.has_destination || (PropsFromItem(*tile->topItem()).destination == props.destination))
-		&& PropsFromItem(*tile->topItem()).text == props.text
-		&& PropsFromItem(*tile->topItem()).description == props.description) {
-		return false;
+	if (inspect_index_ < 0 || inspect_index_ >= tile->stackCount()) {
+		inspect_index_ = tile->stackCount() - 1;
 	}
+}
 
+int EditorSession::inspectIndex() const {
+	const Tile* tile = map_.getTile(inspect_);
+	if (!tile || tile->stackCount() == 0) {
+		return 0;
+	}
+	if (inspect_index_ < 0 || inspect_index_ >= tile->stackCount()) {
+		return tile->stackCount() - 1;
+	}
+	return inspect_index_;
+}
+
+void EditorSession::setInspectIndex(int index) {
+	inspect_index_ = index;
+	clampInspectIndex();
+}
+
+const Item* EditorSession::inspectItem() const {
+	const Tile* tile = map_.getTile(inspect_);
+	return tile ? tile->stackItem(inspectIndex()) : nullptr;
+}
+
+Item* EditorSession::inspectItem() {
+	Tile* tile = map_.getTile(inspect_);
+	return tile ? tile->stackItem(inspectIndex()) : nullptr;
+}
+
+std::vector<StackEntry> EditorSession::browseInspect() const {
+	std::vector<StackEntry> entries;
+	const Tile* tile = map_.getTile(inspect_);
+	if (!tile) {
+		return entries;
+	}
+	for (int i = 0; i < tile->stackCount(); ++i) {
+		const Item* item = tile->stackItem(i);
+		if (!item) {
+			continue;
+		}
+		StackEntry entry;
+		entry.index = i;
+		entry.item_id = item->getID();
+		entry.is_ground = tile->isGroundIndex(i);
+		entry.content_count = item->getContents().size();
+		entry.action_id = item->getActionID();
+		entry.unique_id = item->getUniqueID();
+		entries.push_back(entry);
+	}
+	return entries;
+}
+
+bool EditorSession::recordInspectTile(Tile after) {
+	Tile* tile = map_.getTile(inspect_);
+	if (!tile) {
+		last_error_ = "No inspect tile";
+		return false;
+	}
 	Action action(ActionIdentifier::Replace);
 	TileChange change;
 	change.position = inspect_;
 	change.before = tile->deepCopy();
-	change.after = tile->deepCopy();
-	Item* target = change.after.topItem();
-	ApplyPropsToItem(*target, props);
+	change.after = std::move(after);
 	if (change.after.empty()) {
 		map_.removeTile(inspect_);
 	} else {
@@ -698,18 +747,111 @@ bool EditorSession::editTopItem(const ItemProps& props) {
 	}
 	action.addChange(std::move(change));
 	history_.record(std::move(action));
+	clampInspectIndex();
 	last_error_.clear();
 	return true;
+}
+
+bool EditorSession::editTopItem(const ItemProps& props) {
+	endStroke();
+	Tile* tile = map_.getTile(inspect_);
+	const int index = inspectIndex();
+	if (!tile || !tile->stackItem(index)) {
+		last_error_ = "No item at inspect tile";
+		return false;
+	}
+	ItemProps normalized = props;
+	if (normalized.count == 0) {
+		normalized.count = 1;
+	}
+	if (PropsEqual(PropsFromItem(*tile->stackItem(index)), normalized)) {
+		return false;
+	}
+
+	Tile after = tile->deepCopy();
+	ApplyPropsToItem(*after.stackItem(index), normalized);
+	return recordInspectTile(std::move(after));
+}
+
+bool EditorSession::removeInspectItem() {
+	endStroke();
+	Tile* tile = map_.getTile(inspect_);
+	const int index = inspectIndex();
+	if (!tile || !tile->stackItem(index)) {
+		last_error_ = "No item to remove";
+		return false;
+	}
+	Tile after = tile->deepCopy();
+	after.removeStackIndex(index);
+	return recordInspectTile(std::move(after));
+}
+
+bool EditorSession::moveInspectItem(int delta) {
+	endStroke();
+	Tile* tile = map_.getTile(inspect_);
+	const int index = inspectIndex();
+	if (!tile || tile->isGroundIndex(index)) {
+		last_error_ = "Ground cannot move in the overlay stack";
+		return false;
+	}
+	int overlay = index;
+	if (tile->hasGround()) {
+		--overlay;
+	}
+	Tile after = tile->deepCopy();
+	if (!after.moveOverlay(overlay, delta)) {
+		last_error_ = "Cannot move item further";
+		return false;
+	}
+	if (!recordInspectTile(std::move(after))) {
+		return false;
+	}
+	inspect_index_ = index + delta;
+	clampInspectIndex();
+	return true;
+}
+
+bool EditorSession::addContainerItem(uint16_t item_id, uint8_t count) {
+	endStroke();
+	Tile* tile = map_.getTile(inspect_);
+	const int index = inspectIndex();
+	if (!tile || !tile->stackItem(index) || item_id == 0) {
+		last_error_ = "Select a container item first";
+		return false;
+	}
+	Tile after = tile->deepCopy();
+	Item nested(item_id);
+	nested.setCount(count == 0 ? 1 : count);
+	after.stackItem(index)->getContents().push_back(std::move(nested));
+	return recordInspectTile(std::move(after));
+}
+
+bool EditorSession::removeContainerItem(std::size_t nested_index) {
+	endStroke();
+	Tile* tile = map_.getTile(inspect_);
+	const int index = inspectIndex();
+	if (!tile || !tile->stackItem(index)) {
+		last_error_ = "No container item selected";
+		return false;
+	}
+	Tile after = tile->deepCopy();
+	auto& contents = after.stackItem(index)->getContents();
+	if (nested_index >= contents.size()) {
+		last_error_ = "Container slot out of range";
+		return false;
+	}
+	contents.erase(contents.begin() + static_cast<std::ptrdiff_t>(nested_index));
+	return recordInspectTile(std::move(after));
 }
 
 namespace {
 
 bool TileMatchesQuery(const Tile& tile, const FindQuery& query) {
-	if (tile.getGround() && ItemMatchesQuery(*tile.getGround(), query)) {
+	if (tile.getGround() && ItemMatchesQueryDeep(*tile.getGround(), query)) {
 		return true;
 	}
 	for (const Item& item : tile.getItems()) {
-		if (ItemMatchesQuery(item, query)) {
+		if (ItemMatchesQueryDeep(item, query)) {
 			return true;
 		}
 	}
@@ -753,6 +895,94 @@ bool EditorSession::findNext(const FindQuery& query) {
 		it = hits.begin();
 	}
 	goTo(it->x, it->y, it->z);
+	last_error_.clear();
+	return true;
+}
+
+std::vector<MapIssue> EditorSession::mapIssues() const {
+	std::vector<MapIssue> issues;
+	std::unordered_map<uint16_t, Position> uids;
+
+	auto consider = [&](const Position& pos, const Item& item) {
+		if (item.getID() != 0 && items_.get(item.getID()) == nullptr) {
+			MapIssue issue;
+			issue.kind = MapIssueKind::UnknownItem;
+			issue.position = pos;
+			issue.item_id = item.getID();
+			issue.message = "Unknown item id " + std::to_string(item.getID());
+			issues.push_back(std::move(issue));
+		}
+		if (item.getUniqueID() != 0) {
+			const auto it = uids.find(item.getUniqueID());
+			if (it != uids.end()) {
+				MapIssue issue;
+				issue.kind = MapIssueKind::DuplicateUniqueId;
+				issue.position = pos;
+				issue.item_id = item.getID();
+				issue.unique_id = item.getUniqueID();
+				std::ostringstream text;
+				text << "UID " << item.getUniqueID() << " also at " << it->second.x << "," << it->second.y << ","
+					 << it->second.z;
+				issue.message = text.str();
+				issues.push_back(std::move(issue));
+			} else {
+				uids.emplace(item.getUniqueID(), pos);
+			}
+		}
+		if (item.hasDestination()) {
+			const Position dest = item.getDestination();
+			if (!map_.inBounds(dest) || map_.getTile(dest) == nullptr) {
+				MapIssue issue;
+				issue.kind = MapIssueKind::InvalidTeleport;
+				issue.position = pos;
+				issue.item_id = item.getID();
+				std::ostringstream text;
+				text << "Teleport dest " << dest.x << "," << dest.y << "," << dest.z << " is empty";
+				issue.message = text.str();
+				issues.push_back(std::move(issue));
+			}
+		}
+	};
+
+	std::function<void(const Position&, const Item&)> walk;
+	walk = [&](const Position& pos, const Item& item) {
+		consider(pos, item);
+		for (const Item& nested : item.getContents()) {
+			walk(pos, nested);
+		}
+	};
+
+	for (const auto& [_, tile] : map_.tiles()) {
+		if (tile.getGround()) {
+			walk(tile.getPosition(), *tile.getGround());
+		}
+		for (const Item& item : tile.getItems()) {
+			walk(tile.getPosition(), item);
+		}
+	}
+
+	std::sort(issues.begin(), issues.end(), [](const MapIssue& a, const MapIssue& b) {
+		if (a.position.z != b.position.z) {
+			return a.position.z < b.position.z;
+		}
+		if (a.position.y != b.position.y) {
+			return a.position.y < b.position.y;
+		}
+		if (a.position.x != b.position.x) {
+			return a.position.x < b.position.x;
+		}
+		return static_cast<int>(a.kind) < static_cast<int>(b.kind);
+	});
+	return issues;
+}
+
+bool EditorSession::goToIssue(std::size_t index) {
+	const auto issues = mapIssues();
+	if (index >= issues.size()) {
+		last_error_ = "No such map issue";
+		return false;
+	}
+	goTo(issues[index].position.x, issues[index].position.y, issues[index].position.z);
 	last_error_.clear();
 	return true;
 }
