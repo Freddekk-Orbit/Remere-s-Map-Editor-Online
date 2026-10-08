@@ -307,7 +307,7 @@ private:
 				ImGui::EndMenu();
 			}
 			if (ImGui::BeginMenu("Help")) {
-				ImGui::MenuItem("About Phase 13", nullptr, &show_about_);
+				ImGui::MenuItem("About Phase 14", nullptr, &show_about_);
 				ImGui::EndMenu();
 			}
 			ImGui::SameLine(ImGui::GetWindowWidth() - 220.0f);
@@ -447,15 +447,15 @@ private:
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 16.0f, viewport->WorkPos.y + 28.0f), ImGuiCond_FirstUseEver);
 		ImGui::SetNextWindowSize(ImVec2(460.0f, 240.0f), ImGuiCond_FirstUseEver);
-		if (!ImGui::Begin("RME Wasm - Phase 13", nullptr, ImGuiWindowFlags_NoCollapse)) {
+		if (!ImGui::Begin("RME Wasm - Phase 14", nullptr, ImGuiWindowFlags_NoCollapse)) {
 			ImGui::End();
 			return;
 		}
 
 		ImGui::TextWrapped(
-			"Download the map as a .zip (OTBM + houses.xml + spawn.xml). File -> Map properties "
-			"edits the name and OTBM description. File -> New map picks size (minimum 256). Ctrl+S "
-			"saves to /persist and offers a browser download."
+			"Creature brush paints monsters into spawn.xml. One drag shares a spawn when tiles stay "
+			"inside its radius; otherwise a new spawn is created. Shift+click removes the creature "
+			"(and an empty spawn). Red dots are monsters, yellow circle is the radius."
 		);
 		ImGui::Separator();
 		ImGui::Text("Map: %s  %dx%d  tiles=%zu  items=%zu%s",
@@ -497,9 +497,9 @@ private:
 		ImGui::TextUnformatted("Remere's Map Editor - WebAssembly port");
 		ImGui::Separator();
 		ImGui::TextWrapped(
-			"Phase 13 lets you take a map out of the browser. Download map writes OTBM plus house and "
-			"spawn XML into a zip, keeps a copy on IDBFS /persist, and uses the map name as the file "
-			"name. Map properties edit that name and the OTBM description string."
+			"Phase 14 adds a Creature brush. Painting writes spawn.xml monsters, not OTBM items. "
+			"Pick a name and radius, then click tiles. Shift+click clears that tile's creature. "
+			"Spawn list edits still skip the tile undo stack."
 		);
 		ImGui::Spacing();
 		ImGui::BulletText("UI: Dear ImGui (SDL2 + OpenGL ES 3.0 / WebGL2)");
@@ -929,10 +929,14 @@ private:
 		}
 
 		const Position here(session_.cameraX(), session_.cameraY(), session_.floor());
-		ImGui::SliderInt("Radius", &spawn_radius_, 1, 16);
-		ImGui::InputText("Monster", monster_name_, sizeof(monster_name_));
+		if (ImGui::SliderInt("Radius", &spawn_radius_, 1, 16)) {
+			session_.setSpawnRadius(spawn_radius_);
+		}
+		if (ImGui::InputText("Monster", monster_name_, sizeof(monster_name_))) {
+			session_.setCreatureName(monster_name_);
+		}
 		if (ImGui::Button("Add spawn here")) {
-			session_.addSpawn(here, spawn_radius_);
+			session_.addSpawn(here, session_.spawnRadius(), session_.creatureName());
 		}
 		ImGui::Separator();
 		if (session_.map().spawns().empty()) {
@@ -962,6 +966,7 @@ private:
 			ImGui::PopID();
 		}
 		ImGui::TextDisabled("Yellow circle is the spawn radius. Red dots are monsters.");
+		ImGui::TextDisabled("Creature brush paints these names onto the map.");
 		ImGui::End();
 	}
 
@@ -1359,7 +1364,7 @@ private:
 		}
 		ImGui::SliderFloat("Zoom", &zoom_, 0.5f, 2.5f, "%.2f");
 		ImGui::Checkbox("Floor below", &show_floor_below_);
-		ImGui::TextDisabled("LMB paints. Shift erases. RMB inspects. MMB pan. Wheel zoom. WASD pan. Ctrl+S download. Ctrl+N new map. Ctrl+G goto.");
+		ImGui::TextDisabled("LMB paints. Shift erases/clears creatures. RMB inspects. MMB pan. Wheel zoom. WASD pan. Ctrl+S download.");
 
 		const float tile_px = 32.0f * zoom_;
 		const ImVec2 avail = ImGui::GetContentRegionAvail();
@@ -1453,6 +1458,10 @@ private:
 					center.y + static_cast<float>(creature.dy) * tile_px
 				);
 				draw->AddCircleFilled(monster, 3.5f, IM_COL32(220, 80, 60, 255));
+				if (tile_px >= 18.0f && !creature.name.empty()) {
+					char mark[2] = {creature.name.front(), 0};
+					draw->AddText(ImVec2(monster.x + 4.0f, monster.y - 7.0f), IM_COL32(255, 210, 190, 230), mark);
+				}
 			}
 		}
 
@@ -1518,6 +1527,16 @@ private:
 				}
 				if (hover_tile->getHouseID()) {
 					ImGui::Text("house %u", hover_tile->getHouseID());
+				}
+				for (const std::string& name : session_.creaturesAt(hover_pos)) {
+					ImGui::Text("creature %s", name.c_str());
+				}
+				ImGui::EndTooltip();
+			} else if (!session_.creaturesAt(hover_pos).empty()) {
+				ImGui::BeginTooltip();
+				ImGui::Text("%d, %d, %d", hover_pos.x, hover_pos.y, hover_pos.z);
+				for (const std::string& name : session_.creaturesAt(hover_pos)) {
+					ImGui::Text("creature %s", name.c_str());
 				}
 				ImGui::EndTooltip();
 			}
@@ -1624,8 +1643,9 @@ private:
 			rme::core::BrushKind::Door,
 			rme::core::BrushKind::Table,
 			rme::core::BrushKind::Carpet,
+			rme::core::BrushKind::Creature,
 		};
-		for (int i = 0; i < 14; ++i) {
+		for (int i = 0; i < 15; ++i) {
 			if (i > 0 && i % 6 == 0) {
 				// New row every 6 tools
 			} else if (i > 0) {
@@ -1665,8 +1685,40 @@ private:
 			}
 		}
 
+		if (session_.brushKind() == rme::core::BrushKind::Creature) {
+			ImGui::TextUnformatted("Name");
+			ImGui::SameLine();
+			if (ImGui::InputText("##creature_name", monster_name_, sizeof(monster_name_))) {
+				session_.setCreatureName(monster_name_);
+			}
+			int radius = session_.spawnRadius();
+			if (ImGui::SliderInt("Spawn radius", &radius, 1, 16)) {
+				session_.setSpawnRadius(radius);
+				spawn_radius_ = radius;
+			}
+			int delay = static_cast<int>(session_.spawnTime());
+			if (ImGui::InputInt("Spawntime", &delay)) {
+				session_.setSpawnTime(static_cast<uint32_t>(std::max(1, delay)));
+			}
+			ImGui::TextUnformatted("Names");
+			ImGui::PushID("sample-creatures");
+			for (int i = 0; i < 8; ++i) {
+				if (i > 0 && i % 4 != 0) {
+					ImGui::SameLine();
+				}
+				ImGui::PushID(i);
+				if (ImGui::SmallButton(rme::core::kSampleCreatures[i])) {
+					session_.setCreatureName(rme::core::kSampleCreatures[i]);
+					std::snprintf(monster_name_, sizeof(monster_name_), "%s", rme::core::kSampleCreatures[i]);
+				}
+				ImGui::PopID();
+			}
+			ImGui::PopID();
+		}
+
 		ImGui::Text("Resolved: %s", rme::core::BrushKindName(session_.resolvedBrush()));
 		ImGui::Text("House id %u", session_.houseId());
+		ImGui::Text("Creature %s  r=%d", session_.creatureName().c_str(), session_.spawnRadius());
 		ImGui::Text("Selection %zu   Clipboard %zu", session_.selection().size(), session_.clipboardSize());
 		if (ImGui::Button("Delete sel")) {
 			session_.deleteSelection();
@@ -1690,6 +1742,7 @@ private:
 		ImGui::TextDisabled("Border paints water shores against land. Shift+click removes water.");
 		ImGui::TextDisabled("Doodad scatters overlays (60%% flowers). Shift+click removes the family.");
 		ImGui::TextDisabled("Door faces the nearby wall. Table and carpet auto-connect. Shift+click clears.");
+		ImGui::TextDisabled("Creature paints spawn.xml monsters. Shift+click removes that tile's creature.");
 		ImGui::TextDisabled("[ ] change size. Del deletes. Ctrl+C / X / V clipboard.");
 		ImGui::End();
 	}

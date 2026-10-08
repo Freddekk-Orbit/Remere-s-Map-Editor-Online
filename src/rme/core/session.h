@@ -147,6 +147,14 @@ public:
 	uint32_t flagMask() const { return flag_mask_; }
 	void setHouseId(uint32_t id) { house_id_ = id; }
 	uint32_t houseId() const { return house_id_; }
+	void setCreatureName(std::string name);
+	const std::string& creatureName() const { return creature_name_; }
+	void setSpawnRadius(int radius);
+	int spawnRadius() const { return spawn_radius_; }
+	void setSpawnTime(uint32_t seconds);
+	uint32_t spawnTime() const { return spawn_time_; }
+	int findSpawnCovering(const Position& position) const;
+	std::vector<std::string> creaturesAt(const Position& position) const;
 	void goTo(int x, int y, int z);
 	void centerOnOccupied();
 
@@ -163,6 +171,7 @@ public:
 	bool renameHouse(uint32_t id, std::string name);
 	bool goToHouse(uint32_t id);
 	std::size_t addSpawn(const Position& center, int radius = 3);
+	std::size_t addSpawn(const Position& center, int radius, std::string first_monster);
 	bool removeSpawn(std::size_t index);
 	bool goToSpawn(std::size_t index);
 	bool addSpawnMonster(std::size_t spawn_index, std::string name, int dx = 0, int dy = 0, uint32_t spawntime = 60);
@@ -203,6 +212,8 @@ private:
 	void strokeDoorAt(const Position& position, bool invert);
 	void strokeTableAt(const Position& position, bool invert);
 	void strokeCarpetAt(const Position& position, bool invert);
+	void strokeCreatureAt(const Position& position, bool invert);
+	void removeCreaturesAt(const Position& position);
 
 	Map map_;
 	ActionQueue history_;
@@ -225,6 +236,10 @@ private:
 	BrushKind brush_kind_ = BrushKind::Auto;
 	uint32_t flag_mask_ = TILESTATE_PROTECTIONZONE;
 	uint32_t house_id_ = 1;
+	int spawn_radius_ = 3;
+	uint32_t spawn_time_ = 60;
+	std::string creature_name_ = "Rat";
+	int stroke_spawn_index_ = -1;
 	Position inspect_{100, 100, rme::MapGroundLayer};
 	int inspect_index_ = -1;
 	std::string last_error_;

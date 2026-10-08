@@ -875,7 +875,78 @@ int main() {
 		return Fail("map file names should drop paths and illegal characters");
 	}
 
-	std::printf("rme core test ok: %zu tiles, map download zip, furniture/doodads/borders/walls\n",
+	tools.setBrushKind(rme::core::BrushKind::Creature);
+	tools.setCreatureName("Wolf");
+	tools.setSpawnRadius(3);
+	tools.setSpawnTime(90);
+	const std::size_t before_spawns = tools.map().spawns().size();
+	tools.beginStroke();
+	tools.strokeAt(Position(180, 160, z));
+	tools.strokeAt(Position(181, 160, z));
+	tools.endStroke();
+	if (tools.map().spawns().size() != before_spawns + 1) {
+		return Fail("creature stroke should create one spawn for nearby tiles");
+	}
+	const auto& pack = tools.map().spawns().back();
+	if (pack.center != Position(180, 160, z) || pack.radius != 3 || pack.monsters.size() != 2) {
+		return Fail("first painted tile should be the spawn center with two wolves");
+	}
+	if (pack.monsters[0].name != "Wolf" || pack.monsters[1].name != "Wolf" || pack.monsters[1].dx != 1
+		|| pack.monsters[1].spawntime != 90) {
+		return Fail("adjacent creature should share the spawn with dx=1");
+	}
+	if (tools.creaturesAt(Position(180, 160, z)).size() != 1
+		|| tools.creaturesAt(Position(180, 160, z)).front() != "Wolf") {
+		return Fail("creaturesAt should find the painted wolf");
+	}
+
+	tools.setCreatureName("Orc");
+	tools.beginStroke();
+	tools.strokeAt(Position(180, 160, z));
+	tools.endStroke();
+	if (tools.creaturesAt(Position(180, 160, z)).front() != "Orc") {
+		return Fail("painting over a creature should replace the name");
+	}
+
+	tools.beginStroke();
+	tools.strokeAt(Position(200, 200, z));
+	tools.endStroke();
+	if (tools.map().spawns().size() != before_spawns + 2) {
+		return Fail("a tile outside the radius should start a new spawn");
+	}
+
+	tools.setBrushKind(rme::core::BrushKind::Ground);
+	tools.setBrushId(100);
+	tools.beginStroke();
+	tools.strokeAt(Position(182, 160, z));
+	tools.endStroke();
+	tools.setBrushKind(rme::core::BrushKind::Creature);
+	tools.setCreatureName("Snake");
+	tools.beginStroke();
+	tools.strokeAt(Position(182, 160, z));
+	tools.endStroke();
+	tools.beginStroke();
+	tools.strokeAt(Position(182, 160, z), true);
+	tools.endStroke();
+	if (!tools.creaturesAt(Position(182, 160, z)).empty()) {
+		return Fail("shift+creature should remove the monster");
+	}
+	const auto* grass_tile = tools.map().getTile(Position(182, 160, z));
+	if (!grass_tile || !grass_tile->getGround() || grass_tile->getGround()->getID() != 100) {
+		return Fail("shift+creature must not erase ground");
+	}
+
+	const auto creature_saved = (dir / "rme_phase14_creatures.otbm").string();
+	if (!tools.saveOtbm(creature_saved)) {
+		return Fail("creature map save failed");
+	}
+	EditorSession creature_reload;
+	if (!creature_reload.loadOtbm(creature_saved) || creature_reload.creaturesAt(Position(181, 160, z)).empty()
+		|| creature_reload.creaturesAt(Position(181, 160, z)).front() != "Wolf") {
+		return Fail("spawn XML should keep painted creatures");
+	}
+
+	std::printf("rme core test ok: %zu tiles, creatures, map download zip, furniture\n",
 		reloaded.map().tileCount());
 	return 0;
 }
