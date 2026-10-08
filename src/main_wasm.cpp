@@ -436,7 +436,7 @@ private:
 		}
 
 		ImGui::TextWrapped(
-			"Doodad scatter: Auto or Doodad on a flower places overlays with 60% chance so a 3x3 brush "
+			"Doodad scatter: Auto or Doodad on a flower places overlays with 60%% chance so a 3x3 brush "
 			"does not fill every tile. Shift+click removes that doodad family. Overlay still paints "
 			"every tile. Walls and water borders from Phase 9-10 stay as they were."
 		);
@@ -477,7 +477,7 @@ private:
 		ImGui::Separator();
 		ImGui::TextWrapped(
 			"Phase 11 adds doodad brushes from materials.xml. A doodad is a named overlay set with a "
-			"chance (sample Flowers = item 104 at 60%). Scatter uses a stable position hash, so the "
+			"chance (sample Flowers = item 104 at 60%%). Scatter uses a stable position hash, so the "
 			"same tile always hits or misses. One undo action per drag."
 		);
 		ImGui::Spacing();
@@ -1570,7 +1570,7 @@ private:
 		ImGui::TextDisabled("House paints magenta house tiles for the selected house id.");
 		ImGui::TextDisabled("Wall auto-connects timber pieces. Shift+click removes the family.");
 		ImGui::TextDisabled("Border paints water shores against land. Shift+click removes water.");
-		ImGui::TextDisabled("Doodad scatters overlays (60% flowers). Shift+click removes the family.");
+		ImGui::TextDisabled("Doodad scatters overlays (60%% flowers). Shift+click removes the family.");
 		ImGui::TextDisabled("[ ] change size. Del deletes. Ctrl+C / X / V clipboard.");
 		ImGui::End();
 	}
