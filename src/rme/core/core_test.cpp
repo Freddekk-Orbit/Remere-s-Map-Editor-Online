@@ -1010,7 +1010,31 @@ int main() {
 		return Fail("replace should walk container contents");
 	}
 
-	std::printf("rme core test ok: %zu tiles, rotate/flip/replace, creatures, download zip\n",
+	const auto all_items = tools.paletteItems("", -1);
+	if (all_items.size() != 33) {
+		return Fail("empty palette query should list every sample item");
+	}
+	const auto grass_hits = tools.paletteItems("grass", -1);
+	if (grass_hits.size() != 1 || grass_hits.front() != 100) {
+		return Fail("palette search grass should find item 100");
+	}
+	const auto wall_hits = tools.paletteItems("WALL", -1);
+	if (wall_hits.size() != 5) {
+		return Fail("palette search wall should find the timber set");
+	}
+	const auto id_hits = tools.paletteItems(" 100 ", -1);
+	if (id_hits.size() != 1 || id_hits.front() != 100) {
+		return Fail("palette search should match decimal ids");
+	}
+	const auto grounds_dirt = tools.paletteItems("dirt", 0);
+	if (grounds_dirt.size() != 1 || grounds_dirt.front() != 101) {
+		return Fail("palette search should stay inside the selected tileset");
+	}
+	if (!tools.paletteItems("wall", 0).empty()) {
+		return Fail("grounds tileset should not contain walls");
+	}
+
+	std::printf("rme core test ok: %zu tiles, palette search, rotate/flip/replace, creatures, download zip\n",
 		reloaded.map().tileCount());
 	return 0;
 }

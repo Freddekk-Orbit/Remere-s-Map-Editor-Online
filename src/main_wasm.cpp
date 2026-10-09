@@ -321,7 +321,7 @@ private:
 				ImGui::EndMenu();
 			}
 			if (ImGui::BeginMenu("Help")) {
-				ImGui::MenuItem("About Phase 15", nullptr, &show_about_);
+				ImGui::MenuItem("About Phase 16", nullptr, &show_about_);
 				ImGui::EndMenu();
 			}
 			ImGui::SameLine(ImGui::GetWindowWidth() - 220.0f);
@@ -472,15 +472,14 @@ private:
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 16.0f, viewport->WorkPos.y + 28.0f), ImGuiCond_FirstUseEver);
 		ImGui::SetNextWindowSize(ImVec2(460.0f, 240.0f), ImGuiCond_FirstUseEver);
-		if (!ImGui::Begin("RME Wasm - Phase 15", nullptr, ImGuiWindowFlags_NoCollapse)) {
+		if (!ImGui::Begin("RME Wasm - Phase 16", nullptr, ImGuiWindowFlags_NoCollapse)) {
 			ImGui::End();
 			return;
 		}
 
 		ImGui::TextWrapped(
-			"Select tiles, then rotate (R / Shift+R) or flip (H / V). Find items can replace one "
-			"item id with another on the selection or the whole map. Each transform or replace is "
-			"one undo step."
+			"Search the item palette by name or id. Pick All items to scan the whole .dat, or keep "
+			"a tileset and filter inside it. Enter picks the first match as the brush."
 		);
 		ImGui::Separator();
 		ImGui::Text("Map: %s  %dx%d  tiles=%zu  items=%zu%s",
@@ -522,9 +521,9 @@ private:
 		ImGui::TextUnformatted("Remere's Map Editor - WebAssembly port");
 		ImGui::Separator();
 		ImGui::TextWrapped(
-			"Phase 15 rotates and flips the current selection and can replace item ids. Transforms "
-			"move whole tiles (ground, overlays, house id, flags). Replace walks stacks and "
-			"container contents. Both go through undo."
+			"Phase 16 adds palette search. Filter the item grid by name or id, optionally across "
+			"every loaded item instead of one tileset. The search lives in EditorSession; ImGui "
+			"only displays the matches."
 		);
 		ImGui::Spacing();
 		ImGui::BulletText("UI: Dear ImGui (SDL2 + OpenGL ES 3.0 / WebGL2)");
@@ -1798,6 +1797,7 @@ private:
 		ImGui::TextDisabled("Creature paints spawn.xml monsters. Shift+click removes that tile's creature.");
 		ImGui::TextDisabled("[ ] change size. Del deletes. Ctrl+C / X / V clipboard.");
 		ImGui::TextDisabled("R / Shift+R rotate selection. H / V flip. Find can replace item ids.");
+		ImGui::TextDisabled("Palette search filters by name or id. Enter picks the first match.");
 		ImGui::End();
 	}
 
@@ -1810,35 +1810,44 @@ private:
 			return;
 		}
 
-		ImGui::Text("%zu items  |  brush %u", session_.items().size(), session_.brushId());
+		ImGui::SetNextItemWidth(-1.0f);
+		if (ImGui::InputTextWithHint("##palette_search", "Search name or id", palette_search_,
+				sizeof(palette_search_), ImGuiInputTextFlags_EnterReturnsTrue)) {
+			palette_pick_first_ = true;
+		}
 		const auto& tilesets = session_.materials().tilesets();
-		if (!tilesets.empty()) {
-			if (palette_tileset_ < 0 || palette_tileset_ >= static_cast<int>(tilesets.size())) {
-				palette_tileset_ = 0;
+		if (palette_tileset_ >= static_cast<int>(tilesets.size())) {
+			palette_tileset_ = tilesets.empty() ? -1 : 0;
+		}
+		const char* tileset_label = "All items";
+		if (palette_tileset_ >= 0 && palette_tileset_ < static_cast<int>(tilesets.size())) {
+			tileset_label = tilesets[static_cast<std::size_t>(palette_tileset_)].name.c_str();
+		}
+		if (ImGui::BeginCombo("Tileset", tileset_label)) {
+			if (ImGui::Selectable("All items", palette_tileset_ < 0)) {
+				palette_tileset_ = -1;
 			}
-			if (ImGui::BeginCombo("Tileset", tilesets[static_cast<std::size_t>(palette_tileset_)].name.c_str())) {
-				for (int i = 0; i < static_cast<int>(tilesets.size()); ++i) {
-					const bool selected = i == palette_tileset_;
-					if (ImGui::Selectable(tilesets[static_cast<std::size_t>(i)].name.c_str(), selected)) {
-						palette_tileset_ = i;
-					}
-					if (selected) {
-						ImGui::SetItemDefaultFocus();
-					}
+			for (int i = 0; i < static_cast<int>(tilesets.size()); ++i) {
+				const bool selected = i == palette_tileset_;
+				if (ImGui::Selectable(tilesets[static_cast<std::size_t>(i)].name.c_str(), selected)) {
+					palette_tileset_ = i;
 				}
-				ImGui::EndCombo();
+				if (selected) {
+					ImGui::SetItemDefaultFocus();
+				}
 			}
+			ImGui::EndCombo();
 		}
-		ImGui::Separator();
 
-		std::vector<uint16_t> ids;
-		if (!tilesets.empty()) {
-			ids = tilesets[static_cast<std::size_t>(palette_tileset_)].items;
-		} else {
-			for (const auto& type : session_.items().items()) {
-				ids.push_back(type.id);
+		const std::vector<uint16_t> ids = session_.paletteItems(palette_search_, palette_tileset_);
+		if (palette_pick_first_) {
+			if (!ids.empty()) {
+				session_.setBrushId(ids.front());
 			}
+			palette_pick_first_ = false;
 		}
+		ImGui::Text("%zu shown / %zu items  |  brush %u", ids.size(), session_.items().size(), session_.brushId());
+		ImGui::Separator();
 
 		const float cell = 40.0f;
 		const float spacing = 6.0f;
@@ -1926,6 +1935,8 @@ private:
 	bool show_issues_ = true;
 	bool show_floor_below_ = true;
 	int palette_tileset_ = 0;
+	char palette_search_[64] = "";
+	bool palette_pick_first_ = false;
 	bool follow_camera_ = false;
 	float zoom_ = 1.0f;
 	bool panning_ = false;

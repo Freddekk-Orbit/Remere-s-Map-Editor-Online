@@ -38,3 +38,4 @@ Port the C++ desktop Remere's Map Editor (https://github.com/opentibiabr/remeres
 - Map name/description are core fields. New-map size is clamped to OTBM min/max. ImGui only calls `EditorSession`.
 - Creature brush mutates spawn.xml via `EditorSession`. Nearby tiles share a spawn inside its radius. Shift+click removes that tile's creature. Spawn edits skip tile undo.
 - Selection rotate/flip and `replaceItems` stay in `EditorSession`. Transforms move whole tiles and are one undo step. Replace walks stacks and container contents.
+- Palette search stays in `EditorSession::paletteItems`. Match name or decimal id. ImGui only lists the result ids.

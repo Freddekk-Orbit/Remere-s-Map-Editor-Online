@@ -1127,6 +1127,36 @@ std::size_t EditorSession::replaceItems(uint16_t from_id, uint16_t to_id, bool s
 	return count;
 }
 
+std::vector<uint16_t> EditorSession::paletteItems(std::string_view query, int tileset_index) const {
+	std::vector<uint16_t> ids;
+	if (tileset_index >= 0) {
+		const auto& sets = materials_.tilesets();
+		if (static_cast<std::size_t>(tileset_index) < sets.size()) {
+			ids = sets[static_cast<std::size_t>(tileset_index)].items;
+		}
+	} else {
+		ids.reserve(items_.size());
+		for (const auto& type : items_.items()) {
+			ids.push_back(type.id);
+		}
+	}
+
+	query = TrimPaletteQuery(query);
+	if (query.empty()) {
+		return ids;
+	}
+
+	std::vector<uint16_t> matched;
+	matched.reserve(ids.size());
+	for (uint16_t id : ids) {
+		const ItemType* type = items_.get(id);
+		if (type && ItemMatchesPaletteQuery(*type, query)) {
+			matched.push_back(id);
+		}
+	}
+	return matched;
+}
+
 bool EditorSession::undo() {
 	endStroke();
 	const bool ok = history_.undo(map_);
