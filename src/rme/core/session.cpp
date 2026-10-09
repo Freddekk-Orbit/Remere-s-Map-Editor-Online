@@ -962,6 +962,171 @@ void EditorSession::pasteAt(const Position& position) {
 	}
 }
 
+namespace {
+
+std::size_t ReplaceItemIds(Item& item, uint16_t from_id, uint16_t to_id) {
+	std::size_t count = 0;
+	if (item.getID() == from_id) {
+		item.setID(to_id);
+		++count;
+	}
+	for (Item& nested : item.getContents()) {
+		count += ReplaceItemIds(nested, from_id, to_id);
+	}
+	return count;
+}
+
+std::size_t ReplaceTileIds(Tile& tile, uint16_t from_id, uint16_t to_id) {
+	std::size_t count = 0;
+	if (tile.getGround()) {
+		count += ReplaceItemIds(*tile.getGround(), from_id, to_id);
+	}
+	for (Item& item : tile.getItems()) {
+		count += ReplaceItemIds(item, from_id, to_id);
+	}
+	return count;
+}
+
+Position TransformCell(int lx, int ly, int width, int height, bool rotate, bool clockwise, bool horizontal) {
+	if (rotate) {
+		if (clockwise) {
+			return Position(height - 1 - ly, lx, 0);
+		}
+		return Position(ly, width - 1 - lx, 0);
+	}
+	if (horizontal) {
+		return Position(width - 1 - lx, ly, 0);
+	}
+	return Position(lx, height - 1 - ly, 0);
+}
+
+} // namespace
+
+bool EditorSession::rotateSelection(bool clockwise) {
+	return transformSelection(true, clockwise, true);
+}
+
+bool EditorSession::flipSelection(bool horizontal) {
+	return transformSelection(false, true, horizontal);
+}
+
+bool EditorSession::transformSelection(bool rotate, bool clockwise, bool horizontal) {
+	endStroke();
+	if (!selection_.visible()) {
+		last_error_ = "Nothing selected";
+		return false;
+	}
+	const auto cells = selection_.tiles();
+	if (cells.empty()) {
+		last_error_ = "Nothing selected";
+		return false;
+	}
+
+	int x0 = cells.front().x;
+	int y0 = cells.front().y;
+	int x1 = x0;
+	int y1 = y0;
+	for (const Position& cell : cells) {
+		x0 = std::min(x0, cell.x);
+		y0 = std::min(y0, cell.y);
+		x1 = std::max(x1, cell.x);
+		y1 = std::max(y1, cell.y);
+	}
+	const int width = x1 - x0 + 1;
+	const int height = y1 - y0 + 1;
+	const int z = cells.front().z;
+
+	std::vector<Position> dests;
+	dests.reserve(cells.size());
+	std::vector<Tile> tiles;
+	tiles.reserve(cells.size());
+	for (const Position& cell : cells) {
+		const Position local = TransformCell(cell.x - x0, cell.y - y0, width, height, rotate, clockwise, horizontal);
+		const Position dest(x0 + local.x, y0 + local.y, z);
+		if (!map_.inBounds(dest)) {
+			last_error_ = "Transform would leave the map";
+			return false;
+		}
+		dests.push_back(dest);
+		if (const Tile* existing = map_.getTile(cell)) {
+			tiles.push_back(existing->deepCopy());
+		} else {
+			Tile empty;
+			empty.setPosition(cell);
+			tiles.push_back(std::move(empty));
+		}
+	}
+
+	Action action(ActionIdentifier::Transform);
+	for (const Position& cell : cells) {
+		Tile empty;
+		empty.setPosition(cell);
+		writeTileAfter(action, cell, std::move(empty));
+	}
+	for (std::size_t i = 0; i < dests.size(); ++i) {
+		writeTileAfter(action, dests[i], tiles[i]);
+	}
+	if (!action.changes().empty()) {
+		history_.record(std::move(action));
+	}
+
+	int dx0 = dests.front().x;
+	int dy0 = dests.front().y;
+	int dx1 = dx0;
+	int dy1 = dy0;
+	for (const Position& dest : dests) {
+		dx0 = std::min(dx0, dest.x);
+		dy0 = std::min(dy0, dest.y);
+		dx1 = std::max(dx1, dest.x);
+		dy1 = std::max(dy1, dest.y);
+	}
+	selection_.begin(Position(dx0, dy0, z));
+	selection_.update(Position(dx1, dy1, z));
+	selection_.finish();
+	last_error_.clear();
+	return true;
+}
+
+std::size_t EditorSession::replaceItems(uint16_t from_id, uint16_t to_id, bool selection_only) {
+	endStroke();
+	if (from_id == 0 || from_id == to_id) {
+		last_error_ = "Replace needs two different item ids";
+		return 0;
+	}
+
+	std::vector<Position> cells;
+	if (selection_only) {
+		if (!selection_.visible()) {
+			last_error_ = "Nothing selected";
+			return 0;
+		}
+		cells = selection_.tiles();
+	} else {
+		cells = map_.occupiedPositions();
+	}
+
+	Action action(ActionIdentifier::Replace);
+	std::size_t count = 0;
+	for (const Position& cell : cells) {
+		const Tile* existing = map_.getTile(cell);
+		if (!existing || existing->empty()) {
+			continue;
+		}
+		Tile after = existing->deepCopy();
+		const std::size_t replaced = ReplaceTileIds(after, from_id, to_id);
+		if (replaced == 0) {
+			continue;
+		}
+		count += replaced;
+		writeTileAfter(action, cell, std::move(after));
+	}
+	if (!action.changes().empty()) {
+		history_.record(std::move(action));
+	}
+	last_error_.clear();
+	return count;
+}
+
 bool EditorSession::undo() {
 	endStroke();
 	const bool ok = history_.undo(map_);
