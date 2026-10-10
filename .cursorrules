@@ -101,3 +101,8 @@ Port the C++ desktop Remere's Map Editor (https://github.com/opentibiabr/remeres
 - Last-map restore uses `EditorSession::loadLastMap`. The pointer file is `last-map.txt` in the persist folder.
 - `loadMapZip` extracts store-only zip entries by file name (no path traversal) then calls `loadOtbm`.
 - Forget last map deletes the pointer only, not the zip or OTBM.
+
+## Phase 19 Conventions
+- Autosave uses `EditorSession::autosaveOtbm`. It writes only when the map is dirty and is a no-op when clean.
+- ImGui waits until IDBFS restore has run, skips mid-stroke, then saves to `/persist` after a short pause.
+- `beforeunload` warns only when the map is still dirty. Do not autosave the boot sample.
