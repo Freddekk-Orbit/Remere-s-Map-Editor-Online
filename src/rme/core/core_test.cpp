@@ -1095,7 +1095,28 @@ int main() {
 		return Fail("empty last-map folder should not load");
 	}
 
-	std::printf("rme core test ok: %zu tiles, last map, persist client dir, palette search\n",
+	const auto auto_dir = (dir / "rme_phase19_autosave").string();
+	std::filesystem::create_directories(auto_dir);
+	EditorSession autosave;
+	if (!autosave.createSampleMap((std::filesystem::path(auto_dir) / "seed.otbm").string())) {
+		return Fail("phase 19 seed map failed");
+	}
+	autosave.setMapName("phase19");
+	autosave.setMapDescription("Phase 19 autosave");
+	const auto auto_otbm = (std::filesystem::path(auto_dir) / "phase19.otbm").string();
+	if (autosave.map().hasChanged() == false || !autosave.autosaveOtbm(auto_otbm) || autosave.map().hasChanged()) {
+		return Fail("autosaveOtbm should write a dirty map and clear the flag");
+	}
+	if (autosave.autosaveOtbm(auto_otbm) || !autosave.lastError().empty()) {
+		return Fail("autosaveOtbm should no-op when the map is clean");
+	}
+	EditorSession auto_reload;
+	if (!auto_reload.loadOtbm(auto_otbm) || auto_reload.map().getDescription() != "Phase 19 autosave"
+		|| auto_reload.otbmFileName() != "phase19.otbm") {
+		return Fail("autosave OTBM should roundtrip");
+	}
+
+	std::printf("rme core test ok: %zu tiles, last map, autosave, persist client dir, palette search\n",
 		reloaded.map().tileCount());
 	return 0;
 }

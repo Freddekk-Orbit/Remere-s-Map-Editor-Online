@@ -259,6 +259,14 @@ bool EditorSession::forgetLastMap(const std::string& directory) {
 	return true;
 }
 
+bool EditorSession::autosaveOtbm(const std::string& path) {
+	if (!map_.hasChanged()) {
+		last_error_.clear();
+		return false;
+	}
+	return saveOtbm(path);
+}
+
 bool EditorSession::loadDat(const std::string& path) {
 	if (!items_.load(path, assets_)) {
 		last_error_ = assets_.error.empty() ? "Failed to read .dat" : assets_.error;

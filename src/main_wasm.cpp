@@ -175,6 +175,12 @@ public:
 		ImGui::NewFrame();
 
 		MaybeRestorePersistedSession();
+		MaybeAutosave();
+#ifdef __EMSCRIPTEN__
+		EM_ASM({
+			Module.rmeMapDirty = $0;
+		}, session_.map().hasChanged() ? 1 : 0);
+#endif
 		DrawUi();
 
 		ImGui::Render();
@@ -247,6 +253,7 @@ private:
 					OpenMapProperties();
 				}
 				if (ImGui::MenuItem("Create sample OTBM")) {
+					FlushAutosave();
 					session_.createSampleMap(std::string(rme::wasm::kUploadDir) + "/sample.otbm");
 				}
 				if (ImGui::MenuItem("Create sample .dat / .spr")) {
@@ -264,6 +271,7 @@ private:
 				}
 				ImGui::MenuItem("Remember client files", nullptr, &remember_client_);
 				ImGui::MenuItem("Remember last map", nullptr, &remember_map_);
+				ImGui::MenuItem("Autosave", nullptr, &autosave_);
 				if (ImGui::MenuItem("Forget saved client files")) {
 					rme::wasm::ForgetPersistedClientAssets();
 					last_save_message_ = "Forgot saved client files";
@@ -334,7 +342,7 @@ private:
 				ImGui::EndMenu();
 			}
 			if (ImGui::BeginMenu("Help")) {
-				ImGui::MenuItem("About Phase 18", nullptr, &show_about_);
+				ImGui::MenuItem("About Phase 19", nullptr, &show_about_);
 				ImGui::EndMenu();
 			}
 			ImGui::SameLine(ImGui::GetWindowWidth() - 220.0f);
@@ -485,14 +493,14 @@ private:
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 16.0f, viewport->WorkPos.y + 28.0f), ImGuiCond_FirstUseEver);
 		ImGui::SetNextWindowSize(ImVec2(460.0f, 240.0f), ImGuiCond_FirstUseEver);
-		if (!ImGui::Begin("RME Wasm - Phase 18", nullptr, ImGuiWindowFlags_NoCollapse)) {
+		if (!ImGui::Begin("RME Wasm - Phase 19", nullptr, ImGuiWindowFlags_NoCollapse)) {
 			ImGui::End();
 			return;
 		}
 
 		ImGui::TextWrapped(
-			"Save or download a map and the next visit restores it from /persist, along with the "
-			"client .dat / .spr. Sample map and art still boot first while IDBFS syncs."
+			"Edits autosave to /persist after a short pause. Closing the tab warns if the map is "
+			"still dirty. The next visit restores that last map and the client .dat / .spr."
 		);
 		ImGui::Separator();
 		ImGui::Text("Map: %s  %dx%d  tiles=%zu  items=%zu%s",
@@ -534,9 +542,9 @@ private:
 		ImGui::TextUnformatted("Remere's Map Editor - WebAssembly port");
 		ImGui::Separator();
 		ImGui::TextWrapped(
-			"Phase 18 restores the last map from /persist. Download or Save writes last-map.txt; "
-			"when IDBFS is ready the editor loads that zip or OTBM. Client file restore from "
-			"Phase 17 still runs in the same pass."
+			"Phase 19 autosaves a dirty map to /persist after you pause painting. File → Autosave "
+			"is on by default. Closing the tab warns if changes are still unsaved. Last-map and "
+			"client restore from Phase 17–18 still run in the same pass."
 		);
 		ImGui::Spacing();
 		ImGui::BulletText("UI: Dear ImGui (SDL2 + OpenGL ES 3.0 / WebGL2)");
@@ -685,11 +693,13 @@ private:
 	void LoadVirtualFile(const rme::wasm::VirtualFile& file) {
 		switch (file.kind) {
 			case rme::wasm::AssetKind::Otbm:
+				FlushAutosave();
 				if (session_.loadOtbm(file.vfs_path)) {
 					PersistMapAfterLoad(file.vfs_path);
 				}
 				break;
 			case rme::wasm::AssetKind::Otgz:
+				FlushAutosave();
 				if (session_.loadMapZip(file.vfs_path)) {
 					PersistMapAfterLoad(file.vfs_path);
 				}
@@ -724,8 +734,11 @@ private:
 					std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
 						return static_cast<char>(std::tolower(c));
 					});
-					if (lower.ends_with(".zip") && session_.loadMapZip(file.vfs_path)) {
-						PersistMapAfterLoad(file.vfs_path);
+					if (lower.ends_with(".zip")) {
+						FlushAutosave();
+						if (session_.loadMapZip(file.vfs_path)) {
+							PersistMapAfterLoad(file.vfs_path);
+						}
 					}
 				}
 				break;
@@ -1121,15 +1134,51 @@ private:
 		return std::string(rme::wasm::kPersistDir) + "/" + session_.zipFileName();
 	}
 
-	void SaveToPersist() {
+	void SaveToPersist(bool from_autosave = false) {
 		const auto path = PersistOtbmPath();
-		if (!session_.saveOtbm(path)) {
+		if (from_autosave) {
+			if (!session_.autosaveOtbm(path)) {
+				return;
+			}
+		} else if (!session_.saveOtbm(path)) {
 			last_save_message_.clear();
 			return;
 		}
 		RememberPersistedMap(session_.otbmFileName());
 		rme::wasm::SyncPersistentStore();
-		last_save_message_ = "Saved " + path;
+		dirty_since_ = 0.0;
+		last_save_message_ = (from_autosave ? "Autosaved " : "Saved ") + path;
+	}
+
+	void FlushAutosave() {
+		if (!autosave_ || !remember_map_ || !session_.map().hasChanged() || session_.isStroking()) {
+			return;
+		}
+		if (!persist_restore_tried_ || !rme::wasm::IsPersistentReady()) {
+			return;
+		}
+		SaveToPersist(true);
+	}
+
+	void MaybeAutosave() {
+		if (!autosave_ || !remember_map_ || !persist_restore_tried_ || !rme::wasm::IsPersistentReady()) {
+			return;
+		}
+		if (session_.isStroking() || !session_.map().hasChanged()) {
+			if (!session_.map().hasChanged()) {
+				dirty_since_ = 0.0;
+			}
+			return;
+		}
+		const double now = ImGui::GetTime();
+		if (dirty_since_ <= 0.0) {
+			dirty_since_ = now;
+			return;
+		}
+		if (now - dirty_since_ < 1.25) {
+			return;
+		}
+		SaveToPersist(true);
 	}
 
 	void DownloadMapBundle() {
@@ -1160,6 +1209,7 @@ private:
 		ImGui::InputInt("Height", &new_map_h_);
 		ImGui::TextDisabled("Size is clamped to %d-%d.", rme::MapMinWidth, rme::MapMaxWidth);
 		if (ImGui::Button("Create")) {
+			FlushAutosave();
 			session_.newMap(new_map_w_, new_map_h_, new_map_name_);
 			last_save_message_.clear();
 			show_new_map_ = false;
@@ -1908,6 +1958,7 @@ private:
 		ImGui::TextDisabled("Palette search filters by name or id. Enter picks the first match.");
 		ImGui::TextDisabled("Load .dat / .spr once; they restore from /persist on the next visit.");
 		ImGui::TextDisabled("Save or download writes last-map.txt; the next visit restores that map.");
+		ImGui::TextDisabled("Autosave writes a dirty map to /persist after you pause. Closing a dirty tab warns.");
 		ImGui::End();
 	}
 
@@ -2049,6 +2100,8 @@ private:
 	bool palette_pick_first_ = false;
 	bool remember_client_ = true;
 	bool remember_map_ = true;
+	bool autosave_ = true;
+	double dirty_since_ = 0.0;
 	bool persist_restore_tried_ = false;
 	bool follow_camera_ = false;
 	float zoom_ = 1.0f;

@@ -108,6 +108,13 @@
       }
     });
 
+    window.addEventListener('beforeunload', function(event) {
+      if (typeof Module !== 'undefined' && Module.rmeMapDirty) {
+        event.preventDefault();
+        event.returnValue = '';
+      }
+    });
+
     window.addEventListener('keydown', function(event) {
       if (!(event.ctrlKey || event.metaKey)) {
         return;
