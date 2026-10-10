@@ -101,6 +101,7 @@ public:
 	bool rememberLastMap(const std::string& directory, std::string filename);
 	bool loadLastMap(const std::string& directory);
 	bool forgetLastMap(const std::string& directory);
+	bool autosaveOtbm(const std::string& path);
 	void setMapName(std::string name);
 	void setMapDescription(std::string description);
 	std::string otbmFileName() const;

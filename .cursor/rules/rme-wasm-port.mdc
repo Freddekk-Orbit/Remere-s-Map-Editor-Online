@@ -41,3 +41,4 @@ Port the C++ desktop Remere's Map Editor (https://github.com/opentibiabr/remeres
 - Palette search stays in `EditorSession::paletteItems`. Match name or decimal id. ImGui only lists the result ids.
 - Client `.dat` / `.spr` restore uses `loadClientDirectory`. IDBFS copy stays in `rme::wasm`. Do not auto-persist the boot sample.
 - Last-map restore uses `loadLastMap` + `last-map.txt`. Zip extract is filename-only. Forget drops the pointer only.
+- Autosave uses `autosaveOtbm` when the map is dirty. ImGui skips mid-stroke and waits for IDBFS restore. `beforeunload` warns if still dirty.
