@@ -235,17 +235,49 @@ bool EditorSession::loadLastMap(const std::string& directory) {
 	while (!name.empty() && (name.back() == '\n' || name.back() == '\r' || name.back() == ' ')) {
 		name.pop_back();
 	}
-	name = SafeFileName(name);
-	if (name.empty()) {
+	return loadSavedMap(directory, std::move(name));
+}
+
+std::vector<std::string> EditorSession::listSavedMaps(const std::string& directory) const {
+	std::vector<std::string> names;
+	std::error_code ec;
+	if (!std::filesystem::is_directory(directory, ec)) {
+		return names;
+	}
+	for (const auto& entry : std::filesystem::directory_iterator(directory, ec)) {
+		if (!entry.is_regular_file(ec)) {
+			continue;
+		}
+		const auto name = SafeFileName(entry.path().filename().string());
+		if (name.empty()) {
+			continue;
+		}
+		const auto lower = LowerAscii(name);
+		if (lower.ends_with(".otbm") || lower.ends_with(".zip") || lower.ends_with(".otgz")) {
+			names.push_back(name);
+		}
+	}
+	std::sort(names.begin(), names.end());
+	return names;
+}
+
+bool EditorSession::loadSavedMap(const std::string& directory, std::string filename) {
+	filename = SafeFileName(filename);
+	if (directory.empty() || filename.empty()) {
 		last_error_.clear();
 		return false;
 	}
-	const auto path = (std::filesystem::path(directory) / name).string();
-	if (!std::filesystem::is_regular_file(path, ec)) {
-		last_error_ = "Last map is missing: " + name;
+	const auto lower = LowerAscii(filename);
+	if (!lower.ends_with(".otbm") && !lower.ends_with(".zip") && !lower.ends_with(".otgz")) {
+		last_error_ = "Not a map file: " + filename;
 		return false;
 	}
-	const auto lower = LowerAscii(name);
+	const auto path = (std::filesystem::path(directory) / filename).string();
+	std::error_code ec;
+	if (!std::filesystem::is_regular_file(path, ec)) {
+		last_error_ = "Saved map is missing: " + filename;
+		return false;
+	}
 	if (lower.ends_with(".zip") || lower.ends_with(".otgz")) {
 		return loadMapZip(path);
 	}

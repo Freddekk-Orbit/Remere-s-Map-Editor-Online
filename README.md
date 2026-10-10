@@ -4,14 +4,14 @@ WebAssembly port of [Remere's Map Editor](https://github.com/opentibiabr/remeres
 
 This repository is a phased WebAssembly port. The original desktop editor is a wxWidgets + OpenGL application. The browser target removes that windowing stack and boots an ImGui render loop instead.
 
-## Phase 19 status
+## Phase 20 status
 
-- **Autosave** writes a dirty map to IDBFS `/persist` after you pause painting (File → Autosave, on by default)
-- Closing the tab warns if the map is still dirty
-- Last-map restore from Phase 18 still runs after the sample boots
-- Host test: `autosaveOtbm` writes a dirty map, clears the flag, and no-ops when clean
+- **File → Open from /persist** lists `.otbm` / `.zip` / `.otgz` already in the browser store
+- Opening one loads it and updates `last-map.txt`. Client files and the pointer stay out of the list
+- Autosave and last-map restore from Phase 18–19 still run
+- Host test: `listSavedMaps` includes OTBM + zip, skips `Tibia.dat`, and `loadSavedMap` strips `../`
 
-Phase 1–18 remain underneath.
+Phase 1–19 remain underneath.
 
 ## Repository layout
 

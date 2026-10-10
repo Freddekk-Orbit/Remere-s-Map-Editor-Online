@@ -106,3 +106,8 @@ Port the C++ desktop Remere's Map Editor (https://github.com/opentibiabr/remeres
 - Autosave uses `EditorSession::autosaveOtbm`. It writes only when the map is dirty and is a no-op when clean.
 - ImGui waits until IDBFS restore has run, skips mid-stroke, then saves to `/persist` after a short pause.
 - `beforeunload` warns only when the map is still dirty. Do not autosave the boot sample.
+
+## Phase 20 Conventions
+- Saved maps use `EditorSession::listSavedMaps` / `loadSavedMap`. Only `.otbm` / `.zip` / `.otgz` in that folder.
+- File names are filename-only (no path traversal). Client files and `last-map.txt` stay out of the list.
+- ImGui only lists the names and calls `loadSavedMap`. Opening one updates the last-map pointer.
