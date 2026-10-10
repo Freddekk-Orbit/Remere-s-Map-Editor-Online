@@ -6,6 +6,7 @@ class FileReadHandle;
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -53,6 +54,53 @@ private:
 
 bool LoadDatHeader(const std::string& path, ClientAssetsInfo& info);
 bool LoadSprHeader(const std::string& path, ClientAssetsInfo& info);
+
+inline char PaletteAsciiLower(char c) {
+	return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
+}
+
+inline std::string_view TrimPaletteQuery(std::string_view query) {
+	while (!query.empty() && (query.front() == ' ' || query.front() == '\t')) {
+		query.remove_prefix(1);
+	}
+	while (!query.empty() && (query.back() == ' ' || query.back() == '\t')) {
+		query.remove_suffix(1);
+	}
+	return query;
+}
+
+inline bool PaletteContainsInsensitive(std::string_view haystack, std::string_view needle) {
+	if (needle.empty()) {
+		return true;
+	}
+	if (needle.size() > haystack.size()) {
+		return false;
+	}
+	for (std::size_t i = 0; i + needle.size() <= haystack.size(); ++i) {
+		bool match = true;
+		for (std::size_t j = 0; j < needle.size(); ++j) {
+			if (PaletteAsciiLower(haystack[i + j]) != PaletteAsciiLower(needle[j])) {
+				match = false;
+				break;
+			}
+		}
+		if (match) {
+			return true;
+		}
+	}
+	return false;
+}
+
+inline bool ItemMatchesPaletteQuery(const ItemType& type, std::string_view query) {
+	query = TrimPaletteQuery(query);
+	if (query.empty()) {
+		return true;
+	}
+	if (PaletteContainsInsensitive(type.name, query)) {
+		return true;
+	}
+	return PaletteContainsInsensitive(std::to_string(type.id), query);
+}
 
 } // namespace core
 } // namespace rme

@@ -4,14 +4,13 @@ WebAssembly port of [Remere's Map Editor](https://github.com/opentibiabr/remeres
 
 This repository is a phased WebAssembly port. The original desktop editor is a wxWidgets + OpenGL application. The browser target removes that windowing stack and boots an ImGui render loop instead.
 
-## Phase 15 status
+## Phase 16 status
 
-- Select tiles, then **rotate** (R / Shift+R) or **flip** (H / V). The selection rectangle follows the result
-- **Find → Replace** swaps one item id for another on the selection or the whole map, including container contents
-- Each transform or replace is one undo step. Transforms move whole tiles (ground, overlays, house id, flags)
-- Host test: `rme_core_test` covers an L-shape rotate/flip, undo, selection replace, and crate-content replace
+- **Item palette** filters by name or id. **All items** searches the loaded `.dat`; a tileset keeps the filter inside that list
+- Enter in the search box picks the first match as the brush
+- Host test: `rme_core_test` covers grass/wall/id search and tileset scoping
 
-Phase 1–14 remain underneath.
+Phase 1–15 remain underneath.
 
 ## Repository layout
 

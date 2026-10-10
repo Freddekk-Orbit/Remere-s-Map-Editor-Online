@@ -87,3 +87,7 @@ Port the C++ desktop Remere's Map Editor (https://github.com/opentibiabr/remeres
 - Selection rotate/flip and item replace live in `EditorSession`. ImGui only sends those actions.
 - Transforms move whole tiles (ground, overlays, house id, flags) and are one undo step. They must not leave the map.
 - `replaceItems` walks stacks and container contents. Selection-only is optional.
+
+## Phase 16 Conventions
+- Palette search lives in `EditorSession::paletteItems`. ImGui only displays the ids and sets the brush.
+- Match is case-insensitive name substring or decimal item id. Empty query returns the tileset (or every item).

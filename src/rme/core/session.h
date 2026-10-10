@@ -9,6 +9,7 @@
 #include "sprites.h"
 
 #include <string>
+#include <string_view>
 #include <unordered_set>
 #include <vector>
 
@@ -200,6 +201,7 @@ public:
 	bool findNext(const FindQuery& query);
 	std::vector<MapIssue> mapIssues() const;
 	bool goToIssue(std::size_t index);
+	std::vector<uint16_t> paletteItems(std::string_view query, int tileset_index = -1) const;
 
 private:
 	void cancelStroke();
