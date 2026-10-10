@@ -3,6 +3,7 @@
 #include "zip.h"
 
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <functional>
 #include <sstream>
@@ -140,6 +141,67 @@ bool EditorSession::loadDat(const std::string& path) {
 bool EditorSession::loadMaterials(const std::string& path) {
 	if (!materials_.load(path)) {
 		last_error_ = materials_.lastError().empty() ? "Failed to read materials.xml" : materials_.lastError();
+		return false;
+	}
+	last_error_.clear();
+	return true;
+}
+
+bool EditorSession::loadClientDirectory(const std::string& directory) {
+	std::error_code ec;
+	if (!std::filesystem::is_directory(directory, ec)) {
+		last_error_.clear();
+		return false;
+	}
+
+	auto lower_name = [](std::string name) {
+		std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) {
+			return static_cast<char>(std::tolower(c));
+		});
+		return name;
+	};
+
+	std::string dat;
+	std::string spr;
+	std::string materials;
+	for (const auto& entry : std::filesystem::directory_iterator(directory, ec)) {
+		if (!entry.is_regular_file(ec)) {
+			continue;
+		}
+		const std::string path = entry.path().generic_string();
+		const std::string name = lower_name(entry.path().filename().string());
+		if (name.ends_with(".dat")) {
+			if (dat.empty() || name == "tibia.dat") {
+				dat = path;
+			}
+		} else if (name.ends_with(".spr")) {
+			if (spr.empty() || name == "tibia.spr") {
+				spr = path;
+			}
+		} else if (name == "materials.xml") {
+			materials = path;
+		}
+	}
+
+	if (dat.empty() && spr.empty()) {
+		last_error_.clear();
+		return false;
+	}
+
+	bool ok = false;
+	if (!dat.empty() && loadDat(dat)) {
+		ok = true;
+	}
+	if (!spr.empty() && loadSpr(spr)) {
+		ok = true;
+	}
+	if (!materials.empty()) {
+		loadMaterials(materials);
+	}
+	if (!ok) {
+		if (last_error_.empty()) {
+			last_error_ = "Could not load client files from " + directory;
+		}
 		return false;
 	}
 	last_error_.clear();

@@ -357,6 +357,10 @@ bool PersistUploadedFile(const std::string& vfs_path) {
 		return false;
 	}
 	const auto dest = std::string(kPersistDir) + "/" + std::filesystem::path(vfs_path).filename().string();
+	if (vfs_path == dest) {
+		SyncPersistentStore();
+		return true;
+	}
 	std::error_code ec;
 	std::filesystem::copy_file(vfs_path, dest, std::filesystem::copy_options::overwrite_existing, ec);
 	if (ec) {
@@ -370,6 +374,42 @@ bool PersistUploadedFile(const std::string& vfs_path) {
 	}
 	SyncPersistentStore();
 	return true;
+}
+
+void ForgetPersistedClientAssets() {
+	std::error_code ec;
+	std::vector<std::string> removed;
+	if (std::filesystem::exists(kPersistDir, ec)) {
+		for (const auto& entry : std::filesystem::directory_iterator(kPersistDir, ec)) {
+			if (!entry.is_regular_file(ec)) {
+				continue;
+			}
+			const auto name = entry.path().filename().string();
+			const auto kind = GuessAssetKind(name);
+			const bool materials = name == "materials.xml";
+			if (kind != AssetKind::Dat && kind != AssetKind::Spr && !materials) {
+				continue;
+			}
+			const auto path = entry.path().generic_string();
+			std::filesystem::remove(path, ec);
+			if (!ec) {
+				removed.push_back(path);
+			}
+		}
+	}
+	{
+		std::lock_guard lock(g_mutex);
+		g_files.erase(
+			std::remove_if(g_files.begin(), g_files.end(), [&](const VirtualFile& file) {
+				return std::find(removed.begin(), removed.end(), file.vfs_path) != removed.end();
+			}),
+			g_files.end()
+		);
+		if (!removed.empty()) {
+			LogUnlocked("Forgot " + std::to_string(removed.size()) + " saved client file(s)");
+		}
+	}
+	SyncPersistentStore();
 }
 
 } // namespace rme::wasm

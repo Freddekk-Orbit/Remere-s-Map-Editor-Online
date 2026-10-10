@@ -4,13 +4,14 @@ WebAssembly port of [Remere's Map Editor](https://github.com/opentibiabr/remeres
 
 This repository is a phased WebAssembly port. The original desktop editor is a wxWidgets + OpenGL application. The browser target removes that windowing stack and boots an ImGui render loop instead.
 
-## Phase 16 status
+## Phase 17 status
 
-- **Item palette** filters by name or id. **All items** searches the loaded `.dat`; a tileset keeps the filter inside that list
-- Enter in the search box picks the first match as the brush
-- Host test: `rme_core_test` covers grass/wall/id search and tileset scoping
+- Loading a `.dat` / `.spr` copies it to IDBFS **`/persist`** (File → Remember client files)
+- After a reload, the editor boots the sample art, then restores `Tibia.dat` / `Tibia.spr` from `/persist` when IDBFS is ready
+- **Forget saved client files** drops those copies. Map zip persist is unchanged
+- Host test: `loadClientDirectory` prefers `Tibia.dat` over a decoy and ignores an empty folder
 
-Phase 1–15 remain underneath.
+Phase 1–16 remain underneath.
 
 ## Repository layout
 

@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <vector>
@@ -173,6 +174,7 @@ public:
 		ImGui_ImplSDL2_NewFrame();
 		ImGui::NewFrame();
 
+		MaybeRestorePersistedClient();
 		DrawUi();
 
 		ImGui::Render();
@@ -260,6 +262,11 @@ private:
 				if (ImGui::MenuItem("Save to /persist", nullptr, false, true)) {
 					SaveToPersist();
 				}
+				ImGui::MenuItem("Remember client files", nullptr, &remember_client_);
+				if (ImGui::MenuItem("Forget saved client files")) {
+					rme::wasm::ForgetPersistedClientAssets();
+					last_save_message_ = "Forgot saved client files";
+				}
 				if (ImGui::MenuItem("Download map", "Ctrl+S")) {
 					DownloadMapBundle();
 				}
@@ -321,7 +328,7 @@ private:
 				ImGui::EndMenu();
 			}
 			if (ImGui::BeginMenu("Help")) {
-				ImGui::MenuItem("About Phase 16", nullptr, &show_about_);
+				ImGui::MenuItem("About Phase 17", nullptr, &show_about_);
 				ImGui::EndMenu();
 			}
 			ImGui::SameLine(ImGui::GetWindowWidth() - 220.0f);
@@ -472,14 +479,15 @@ private:
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 16.0f, viewport->WorkPos.y + 28.0f), ImGuiCond_FirstUseEver);
 		ImGui::SetNextWindowSize(ImVec2(460.0f, 240.0f), ImGuiCond_FirstUseEver);
-		if (!ImGui::Begin("RME Wasm - Phase 16", nullptr, ImGuiWindowFlags_NoCollapse)) {
+		if (!ImGui::Begin("RME Wasm - Phase 17", nullptr, ImGuiWindowFlags_NoCollapse)) {
 			ImGui::End();
 			return;
 		}
 
 		ImGui::TextWrapped(
-			"Search the item palette by name or id. Pick All items to scan the whole .dat, or keep "
-			"a tileset and filter inside it. Enter picks the first match as the brush."
+			"Client .dat / .spr stay in the browser after a reload. Load them once, and the next "
+			"visit restores them from /persist. Sample art still boots first so the editor is "
+			"never empty while IDBFS syncs."
 		);
 		ImGui::Separator();
 		ImGui::Text("Map: %s  %dx%d  tiles=%zu  items=%zu%s",
@@ -521,9 +529,9 @@ private:
 		ImGui::TextUnformatted("Remere's Map Editor - WebAssembly port");
 		ImGui::Separator();
 		ImGui::TextWrapped(
-			"Phase 16 adds palette search. Filter the item grid by name or id, optionally across "
-			"every loaded item instead of one tileset. The search lives in EditorSession; ImGui "
-			"only displays the matches."
+			"Phase 17 remembers client .dat / .spr on IDBFS. Loading a client file copies it to "
+			"/persist; when the store is ready the editor restores Tibia.dat / Tibia.spr. Sample "
+			"assets are not saved unless you load them yourself."
 		);
 		ImGui::Spacing();
 		ImGui::BulletText("UI: Dear ImGui (SDL2 + OpenGL ES 3.0 / WebGL2)");
@@ -604,24 +612,58 @@ private:
 		ImGui::End();
 	}
 
+	void PersistClientAfterLoad(const std::string& vfs_path) {
+		if (!remember_client_) {
+			return;
+		}
+		rme::wasm::PersistUploadedFile(vfs_path);
+		if (rme::wasm::GuessAssetKind(vfs_path) == rme::wasm::AssetKind::Dat) {
+			const auto materials = (std::filesystem::path(vfs_path).parent_path() / "materials.xml").generic_string();
+			if (rme::wasm::FileExists(materials)) {
+				rme::wasm::PersistUploadedFile(materials);
+			}
+		}
+	}
+
+	void MaybeRestorePersistedClient() {
+		if (persist_restore_tried_ || !rme::wasm::IsPersistentReady()) {
+			return;
+		}
+		persist_restore_tried_ = true;
+		if (!remember_client_) {
+			return;
+		}
+		if (!session_.loadClientDirectory(rme::wasm::kPersistDir)) {
+			return;
+		}
+		ReloadAtlas();
+		last_save_message_ = "Restored client files from /persist";
+	}
+
 	void LoadVirtualFile(const rme::wasm::VirtualFile& file) {
 		switch (file.kind) {
 			case rme::wasm::AssetKind::Otbm:
 				session_.loadOtbm(file.vfs_path);
 				break;
 			case rme::wasm::AssetKind::Dat:
-				session_.loadDat(file.vfs_path);
+				if (session_.loadDat(file.vfs_path)) {
+					PersistClientAfterLoad(file.vfs_path);
+				}
 				break;
 			case rme::wasm::AssetKind::Spr:
-				session_.loadSpr(file.vfs_path);
-				ReloadAtlas();
+				if (session_.loadSpr(file.vfs_path)) {
+					PersistClientAfterLoad(file.vfs_path);
+					ReloadAtlas();
+				}
 				break;
 			case rme::wasm::AssetKind::Xml: {
 				const auto& name = file.name;
 				if (name.find("spawn") != std::string::npos) {
 					session_.loadSpawnXml(file.vfs_path);
 				} else if (name.find("material") != std::string::npos) {
-					session_.loadMaterials(file.vfs_path);
+					if (session_.loadMaterials(file.vfs_path)) {
+						PersistClientAfterLoad(file.vfs_path);
+					}
 				} else {
 					session_.loadHouseXml(file.vfs_path);
 				}
@@ -676,10 +718,16 @@ private:
 		const auto& assets = session_.assets();
 		ImGui::Separator();
 		ImGui::Text(".dat: %s  items=%zu (header %u)", assets.dat_loaded ? "loaded" : "-", session_.items().size(), assets.item_count);
+		if (!assets.dat_path.empty()) {
+			ImGui::TextDisabled("%s", assets.dat_path.c_str());
+		}
 		ImGui::Text(".spr: %s  sprites=%u  atlas=%s",
 			assets.spr_loaded ? "loaded" : "-",
 			assets.sprite_count,
 			atlas_.valid() ? "ready" : "-");
+		if (!assets.spr_path.empty()) {
+			ImGui::TextDisabled("%s", assets.spr_path.c_str());
+		}
 		if (const auto* brush = session_.brushType()) {
 			ImGui::Text("Brush: %u %s  sprite=%u", brush->id, brush->name.c_str(), brush->sprite_id);
 		}
@@ -1798,6 +1846,7 @@ private:
 		ImGui::TextDisabled("[ ] change size. Del deletes. Ctrl+C / X / V clipboard.");
 		ImGui::TextDisabled("R / Shift+R rotate selection. H / V flip. Find can replace item ids.");
 		ImGui::TextDisabled("Palette search filters by name or id. Enter picks the first match.");
+		ImGui::TextDisabled("Load .dat / .spr once; they restore from /persist on the next visit.");
 		ImGui::End();
 	}
 
@@ -1937,6 +1986,8 @@ private:
 	int palette_tileset_ = 0;
 	char palette_search_[64] = "";
 	bool palette_pick_first_ = false;
+	bool remember_client_ = true;
+	bool persist_restore_tried_ = false;
 	bool follow_camera_ = false;
 	float zoom_ = 1.0f;
 	bool panning_ = false;
