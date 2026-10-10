@@ -1064,7 +1064,38 @@ int main() {
 		return Fail("empty client directory should not load");
 	}
 
-	std::printf("rme core test ok: %zu tiles, persist client dir, palette search, rotate/flip/replace\n",
+	const auto last_dir = (dir / "rme_phase18_map").string();
+	std::filesystem::create_directories(last_dir);
+	EditorSession last_map;
+	if (!last_map.createSampleMap((std::filesystem::path(last_dir) / "seed.otbm").string())) {
+		return Fail("phase 18 seed map failed");
+	}
+	last_map.setMapName("phase18");
+	last_map.setMapDescription("Phase 18 last map");
+	const auto last_zip = (std::filesystem::path(last_dir) / "phase18.zip").string();
+	if (!last_map.saveMapZip(last_zip) || !last_map.rememberLastMap(last_dir, "phase18.zip")) {
+		return Fail("remember last map zip failed");
+	}
+	if (!last_map.rememberLastMap(last_dir, "../phase18.zip")) {
+		return Fail("rememberLastMap should keep only the file name");
+	}
+	EditorSession last_reload;
+	if (!last_reload.loadLastMap(last_dir) || last_reload.map().getDescription() != "Phase 18 last map"
+		|| last_reload.otbmFileName() != "phase18.otbm") {
+		return Fail("loadLastMap should restore the zip pointer");
+	}
+	if (!last_reload.forgetLastMap(last_dir) || last_reload.loadLastMap(last_dir)) {
+		return Fail("forgetLastMap should drop the pointer");
+	}
+	if (!last_reload.rememberLastMap(last_dir, "phase18.otbm") || !last_reload.loadLastMap(last_dir)
+		|| last_reload.map().getDescription() != "Phase 18 last map") {
+		return Fail("loadLastMap should restore a plain OTBM");
+	}
+	if (last_reload.loadLastMap((dir / "rme_phase18_empty").string())) {
+		return Fail("empty last-map folder should not load");
+	}
+
+	std::printf("rme core test ok: %zu tiles, last map, persist client dir, palette search\n",
 		reloaded.map().tileCount());
 	return 0;
 }

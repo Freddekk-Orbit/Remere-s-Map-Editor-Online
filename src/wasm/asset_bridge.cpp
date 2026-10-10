@@ -141,7 +141,7 @@ AssetKind GuessAssetKind(const std::string& name) {
 	if (lower.ends_with(".xml")) {
 		return AssetKind::Xml;
 	}
-	if (lower.ends_with(".otgz")) {
+	if (lower.ends_with(".otgz") || lower.ends_with(".zip")) {
 		return AssetKind::Otgz;
 	}
 	return lower.find('.') == std::string::npos ? AssetKind::Unknown : AssetKind::Other;
