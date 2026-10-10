@@ -97,6 +97,10 @@ public:
 	bool loadOtbm(const std::string& path);
 	bool saveOtbm(const std::string& path);
 	bool saveMapZip(const std::string& path);
+	bool loadMapZip(const std::string& path);
+	bool rememberLastMap(const std::string& directory, std::string filename);
+	bool loadLastMap(const std::string& directory);
+	bool forgetLastMap(const std::string& directory);
 	void setMapName(std::string name);
 	void setMapDescription(std::string description);
 	std::string otbmFileName() const;

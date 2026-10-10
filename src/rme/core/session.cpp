@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <filesystem>
 #include <functional>
 #include <sstream>
@@ -123,6 +124,139 @@ std::string EditorSession::otbmFileName() const {
 
 std::string EditorSession::zipFileName() const {
 	return MapZipFileName(map_.getName());
+}
+
+namespace {
+
+constexpr const char* kLastMapFile = "last-map.txt";
+
+std::string LowerAscii(std::string value) {
+	std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+		return static_cast<char>(std::tolower(c));
+	});
+	return value;
+}
+
+std::string SafeFileName(const std::string& name) {
+	auto file = std::filesystem::path(name).filename().string();
+	if (file.empty() || file == "." || file == "..") {
+		return {};
+	}
+	return file;
+}
+
+bool WriteBytes(const std::string& path, const std::vector<uint8_t>& data) {
+	const auto parent = std::filesystem::path(path).parent_path();
+	std::error_code ec;
+	if (!parent.empty()) {
+		std::filesystem::create_directories(parent, ec);
+	}
+	FILE* out = std::fopen(path.c_str(), "wb");
+	if (!out) {
+		return false;
+	}
+	const auto wrote = std::fwrite(data.data(), 1, data.size(), out);
+	std::fclose(out);
+	return wrote == data.size();
+}
+
+} // namespace
+
+bool EditorSession::loadMapZip(const std::string& path) {
+	std::vector<ZipEntry> entries;
+	if (!ReadStoreZip(path, entries)) {
+		last_error_ = "Failed to read " + path;
+		return false;
+	}
+	const auto dir = std::filesystem::path(path).parent_path();
+	std::string otbm;
+	for (const auto& entry : entries) {
+		const auto name = SafeFileName(entry.name);
+		if (name.empty()) {
+			continue;
+		}
+		const auto dest = dir.empty() ? name : (dir / name).string();
+		if (!WriteBytes(dest, entry.data)) {
+			last_error_ = "Failed to extract " + name;
+			return false;
+		}
+		if (LowerAscii(name).ends_with(".otbm")) {
+			otbm = dest;
+		}
+	}
+	if (otbm.empty()) {
+		last_error_ = "Zip has no OTBM";
+		return false;
+	}
+	return loadOtbm(otbm);
+}
+
+bool EditorSession::rememberLastMap(const std::string& directory, std::string filename) {
+	filename = SafeFileName(filename);
+	if (directory.empty() || filename.empty()) {
+		last_error_ = "Last map needs a folder and file name";
+		return false;
+	}
+	std::error_code ec;
+	std::filesystem::create_directories(directory, ec);
+	const auto pointer = (std::filesystem::path(directory) / kLastMapFile).string();
+	FILE* out = std::fopen(pointer.c_str(), "wb");
+	if (!out) {
+		last_error_ = "Could not write last-map pointer";
+		return false;
+	}
+	filename.push_back('\n');
+	const auto wrote = std::fwrite(filename.data(), 1, filename.size(), out);
+	std::fclose(out);
+	if (wrote != filename.size()) {
+		last_error_ = "Short write for last-map pointer";
+		return false;
+	}
+	last_error_.clear();
+	return true;
+}
+
+bool EditorSession::loadLastMap(const std::string& directory) {
+	const auto pointer = std::filesystem::path(directory) / kLastMapFile;
+	std::error_code ec;
+	if (!std::filesystem::is_regular_file(pointer, ec)) {
+		last_error_.clear();
+		return false;
+	}
+	FILE* in = std::fopen(pointer.string().c_str(), "rb");
+	if (!in) {
+		last_error_.clear();
+		return false;
+	}
+	char buf[256] = {};
+	const auto n = std::fread(buf, 1, sizeof(buf) - 1, in);
+	std::fclose(in);
+	std::string name(buf, n);
+	while (!name.empty() && (name.back() == '\n' || name.back() == '\r' || name.back() == ' ')) {
+		name.pop_back();
+	}
+	name = SafeFileName(name);
+	if (name.empty()) {
+		last_error_.clear();
+		return false;
+	}
+	const auto path = (std::filesystem::path(directory) / name).string();
+	if (!std::filesystem::is_regular_file(path, ec)) {
+		last_error_ = "Last map is missing: " + name;
+		return false;
+	}
+	const auto lower = LowerAscii(name);
+	if (lower.ends_with(".zip") || lower.ends_with(".otgz")) {
+		return loadMapZip(path);
+	}
+	return loadOtbm(path);
+}
+
+bool EditorSession::forgetLastMap(const std::string& directory) {
+	std::error_code ec;
+	std::filesystem::remove(std::filesystem::path(directory) / kLastMapFile, ec);
+	last_error_.clear();
+	return true;
 }
 
 bool EditorSession::loadDat(const std::string& path) {

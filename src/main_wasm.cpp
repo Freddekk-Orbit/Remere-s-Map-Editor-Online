@@ -39,7 +39,7 @@ const char* AssetKindLabel(rme::wasm::AssetKind kind) {
 		case rme::wasm::AssetKind::Xml:
 			return "XML";
 		case rme::wasm::AssetKind::Otgz:
-			return ".otgz archive";
+			return ".zip / .otgz";
 		case rme::wasm::AssetKind::Other:
 			return "file";
 		case rme::wasm::AssetKind::Unknown:
@@ -174,7 +174,7 @@ public:
 		ImGui_ImplSDL2_NewFrame();
 		ImGui::NewFrame();
 
-		MaybeRestorePersistedClient();
+		MaybeRestorePersistedSession();
 		DrawUi();
 
 		ImGui::Render();
@@ -263,9 +263,15 @@ private:
 					SaveToPersist();
 				}
 				ImGui::MenuItem("Remember client files", nullptr, &remember_client_);
+				ImGui::MenuItem("Remember last map", nullptr, &remember_map_);
 				if (ImGui::MenuItem("Forget saved client files")) {
 					rme::wasm::ForgetPersistedClientAssets();
 					last_save_message_ = "Forgot saved client files";
+				}
+				if (ImGui::MenuItem("Forget last map")) {
+					session_.forgetLastMap(rme::wasm::kPersistDir);
+					rme::wasm::SyncPersistentStore();
+					last_save_message_ = "Forgot last map";
 				}
 				if (ImGui::MenuItem("Download map", "Ctrl+S")) {
 					DownloadMapBundle();
@@ -328,7 +334,7 @@ private:
 				ImGui::EndMenu();
 			}
 			if (ImGui::BeginMenu("Help")) {
-				ImGui::MenuItem("About Phase 17", nullptr, &show_about_);
+				ImGui::MenuItem("About Phase 18", nullptr, &show_about_);
 				ImGui::EndMenu();
 			}
 			ImGui::SameLine(ImGui::GetWindowWidth() - 220.0f);
@@ -479,15 +485,14 @@ private:
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 16.0f, viewport->WorkPos.y + 28.0f), ImGuiCond_FirstUseEver);
 		ImGui::SetNextWindowSize(ImVec2(460.0f, 240.0f), ImGuiCond_FirstUseEver);
-		if (!ImGui::Begin("RME Wasm - Phase 17", nullptr, ImGuiWindowFlags_NoCollapse)) {
+		if (!ImGui::Begin("RME Wasm - Phase 18", nullptr, ImGuiWindowFlags_NoCollapse)) {
 			ImGui::End();
 			return;
 		}
 
 		ImGui::TextWrapped(
-			"Client .dat / .spr stay in the browser after a reload. Load them once, and the next "
-			"visit restores them from /persist. Sample art still boots first so the editor is "
-			"never empty while IDBFS syncs."
+			"Save or download a map and the next visit restores it from /persist, along with the "
+			"client .dat / .spr. Sample map and art still boot first while IDBFS syncs."
 		);
 		ImGui::Separator();
 		ImGui::Text("Map: %s  %dx%d  tiles=%zu  items=%zu%s",
@@ -529,9 +534,9 @@ private:
 		ImGui::TextUnformatted("Remere's Map Editor - WebAssembly port");
 		ImGui::Separator();
 		ImGui::TextWrapped(
-			"Phase 17 remembers client .dat / .spr on IDBFS. Loading a client file copies it to "
-			"/persist; when the store is ready the editor restores Tibia.dat / Tibia.spr. Sample "
-			"assets are not saved unless you load them yourself."
+			"Phase 18 restores the last map from /persist. Download or Save writes last-map.txt; "
+			"when IDBFS is ready the editor loads that zip or OTBM. Client file restore from "
+			"Phase 17 still runs in the same pass."
 		);
 		ImGui::Spacing();
 		ImGui::BulletText("UI: Dear ImGui (SDL2 + OpenGL ES 3.0 / WebGL2)");
@@ -625,25 +630,69 @@ private:
 		}
 	}
 
-	void MaybeRestorePersistedClient() {
+	void RememberPersistedMap(const std::string& filename) {
+		if (!remember_map_) {
+			return;
+		}
+		session_.rememberLastMap(rme::wasm::kPersistDir, filename);
+		rme::wasm::SyncPersistentStore();
+	}
+
+	void PersistMapAfterLoad(const std::string& vfs_path) {
+		if (!remember_map_) {
+			return;
+		}
+		rme::wasm::PersistUploadedFile(vfs_path);
+		const auto parent = std::filesystem::path(vfs_path).parent_path();
+		if (!session_.map().getHouseFilename().empty()) {
+			const auto houses = (parent / session_.map().getHouseFilename()).generic_string();
+			if (rme::wasm::FileExists(houses)) {
+				rme::wasm::PersistUploadedFile(houses);
+			}
+		}
+		if (!session_.map().getSpawnFilename().empty()) {
+			const auto spawns = (parent / session_.map().getSpawnFilename()).generic_string();
+			if (rme::wasm::FileExists(spawns)) {
+				rme::wasm::PersistUploadedFile(spawns);
+			}
+		}
+		RememberPersistedMap(std::filesystem::path(vfs_path).filename().string());
+	}
+
+	void MaybeRestorePersistedSession() {
 		if (persist_restore_tried_ || !rme::wasm::IsPersistentReady()) {
 			return;
 		}
 		persist_restore_tried_ = true;
-		if (!remember_client_) {
-			return;
+		bool client = false;
+		bool map = false;
+		if (remember_client_ && session_.loadClientDirectory(rme::wasm::kPersistDir)) {
+			ReloadAtlas();
+			client = true;
 		}
-		if (!session_.loadClientDirectory(rme::wasm::kPersistDir)) {
-			return;
+		if (remember_map_ && session_.loadLastMap(rme::wasm::kPersistDir)) {
+			map = true;
 		}
-		ReloadAtlas();
-		last_save_message_ = "Restored client files from /persist";
+		if (client && map) {
+			last_save_message_ = "Restored client files and map from /persist";
+		} else if (client) {
+			last_save_message_ = "Restored client files from /persist";
+		} else if (map) {
+			last_save_message_ = "Restored map from /persist";
+		}
 	}
 
 	void LoadVirtualFile(const rme::wasm::VirtualFile& file) {
 		switch (file.kind) {
 			case rme::wasm::AssetKind::Otbm:
-				session_.loadOtbm(file.vfs_path);
+				if (session_.loadOtbm(file.vfs_path)) {
+					PersistMapAfterLoad(file.vfs_path);
+				}
+				break;
+			case rme::wasm::AssetKind::Otgz:
+				if (session_.loadMapZip(file.vfs_path)) {
+					PersistMapAfterLoad(file.vfs_path);
+				}
 				break;
 			case rme::wasm::AssetKind::Dat:
 				if (session_.loadDat(file.vfs_path)) {
@@ -670,6 +719,15 @@ private:
 				break;
 			}
 			default:
+				if (file.name.size() >= 4) {
+					auto lower = file.name;
+					std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
+						return static_cast<char>(std::tolower(c));
+					});
+					if (lower.ends_with(".zip") && session_.loadMapZip(file.vfs_path)) {
+						PersistMapAfterLoad(file.vfs_path);
+					}
+				}
 				break;
 		}
 	}
@@ -1069,6 +1127,7 @@ private:
 			last_save_message_.clear();
 			return;
 		}
+		RememberPersistedMap(session_.otbmFileName());
 		rme::wasm::SyncPersistentStore();
 		last_save_message_ = "Saved " + path;
 	}
@@ -1079,6 +1138,7 @@ private:
 			last_save_message_.clear();
 			return;
 		}
+		RememberPersistedMap(session_.zipFileName());
 		rme::wasm::SyncPersistentStore();
 		if (rme::wasm::DownloadVfsFile(zip_path, session_.zipFileName())) {
 			last_save_message_ = "Downloaded " + session_.zipFileName() + " (also in /persist)";
@@ -1847,6 +1907,7 @@ private:
 		ImGui::TextDisabled("R / Shift+R rotate selection. H / V flip. Find can replace item ids.");
 		ImGui::TextDisabled("Palette search filters by name or id. Enter picks the first match.");
 		ImGui::TextDisabled("Load .dat / .spr once; they restore from /persist on the next visit.");
+		ImGui::TextDisabled("Save or download writes last-map.txt; the next visit restores that map.");
 		ImGui::End();
 	}
 
@@ -1987,6 +2048,7 @@ private:
 	char palette_search_[64] = "";
 	bool palette_pick_first_ = false;
 	bool remember_client_ = true;
+	bool remember_map_ = true;
 	bool persist_restore_tried_ = false;
 	bool follow_camera_ = false;
 	float zoom_ = 1.0f;
