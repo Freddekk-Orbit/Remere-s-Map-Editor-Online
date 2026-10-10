@@ -249,6 +249,19 @@ private:
 				if (ImGui::MenuItem("New map...", "Ctrl+N")) {
 					OpenNewMapDialog();
 				}
+				if (ImGui::BeginMenu("Open from /persist")) {
+					const auto saved = session_.listSavedMaps(rme::wasm::kPersistDir);
+					if (saved.empty()) {
+						ImGui::TextDisabled("No saved maps");
+					} else {
+						for (const auto& name : saved) {
+							if (ImGui::MenuItem(name.c_str())) {
+								OpenSavedMap(name);
+							}
+						}
+					}
+					ImGui::EndMenu();
+				}
 				if (ImGui::MenuItem("Map properties...")) {
 					OpenMapProperties();
 				}
@@ -342,7 +355,7 @@ private:
 				ImGui::EndMenu();
 			}
 			if (ImGui::BeginMenu("Help")) {
-				ImGui::MenuItem("About Phase 19", nullptr, &show_about_);
+				ImGui::MenuItem("About Phase 20", nullptr, &show_about_);
 				ImGui::EndMenu();
 			}
 			ImGui::SameLine(ImGui::GetWindowWidth() - 220.0f);
@@ -492,15 +505,15 @@ private:
 	void DrawWelcomeOverlay() {
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 16.0f, viewport->WorkPos.y + 28.0f), ImGuiCond_FirstUseEver);
-		ImGui::SetNextWindowSize(ImVec2(460.0f, 240.0f), ImGuiCond_FirstUseEver);
-		if (!ImGui::Begin("RME Wasm - Phase 19", nullptr, ImGuiWindowFlags_NoCollapse)) {
+		ImGui::SetNextWindowSize(ImVec2(460.0f, 300.0f), ImGuiCond_FirstUseEver);
+		if (!ImGui::Begin("RME Wasm - Phase 20", nullptr, ImGuiWindowFlags_NoCollapse)) {
 			ImGui::End();
 			return;
 		}
 
 		ImGui::TextWrapped(
-			"Edits autosave to /persist after a short pause. Closing the tab warns if the map is "
-			"still dirty. The next visit restores that last map and the client .dat / .spr."
+			"File → Open from /persist lists maps already in the browser store. Autosave still "
+			"writes after you pause, and the last map restores on the next visit."
 		);
 		ImGui::Separator();
 		ImGui::Text("Map: %s  %dx%d  tiles=%zu  items=%zu%s",
@@ -528,6 +541,26 @@ private:
 		if (ImGui::Button("New map")) {
 			OpenNewMapDialog();
 		}
+		const auto saved = session_.listSavedMaps(rme::wasm::kPersistDir);
+		if (!saved.empty()) {
+			ImGui::Separator();
+			ImGui::TextDisabled("Saved maps");
+			int shown = 0;
+			for (const auto& name : saved) {
+				if (shown >= 6) {
+					ImGui::TextDisabled("… File → Open from /persist for the rest");
+					break;
+				}
+				ImGui::PushID(name.c_str());
+				if (ImGui::SmallButton("Open")) {
+					OpenSavedMap(name);
+				}
+				ImGui::SameLine();
+				ImGui::TextUnformatted(name.c_str());
+				ImGui::PopID();
+				++shown;
+			}
+		}
 		ImGui::End();
 	}
 
@@ -542,9 +575,8 @@ private:
 		ImGui::TextUnformatted("Remere's Map Editor - WebAssembly port");
 		ImGui::Separator();
 		ImGui::TextWrapped(
-			"Phase 19 autosaves a dirty map to /persist after you pause painting. File → Autosave "
-			"is on by default. Closing the tab warns if changes are still unsaved. Last-map and "
-			"client restore from Phase 17–18 still run in the same pass."
+			"Phase 20 lists maps already in /persist. File → Open from /persist (or the welcome "
+			"list) loads an OTBM or zip by file name. Autosave and last-map restore still run."
 		);
 		ImGui::Spacing();
 		ImGui::BulletText("UI: Dear ImGui (SDL2 + OpenGL ES 3.0 / WebGL2)");
@@ -644,6 +676,15 @@ private:
 		}
 		session_.rememberLastMap(rme::wasm::kPersistDir, filename);
 		rme::wasm::SyncPersistentStore();
+	}
+
+	void OpenSavedMap(const std::string& filename) {
+		FlushAutosave();
+		if (!session_.loadSavedMap(rme::wasm::kPersistDir, filename)) {
+			return;
+		}
+		RememberPersistedMap(filename);
+		last_save_message_ = "Opened " + filename;
 	}
 
 	void PersistMapAfterLoad(const std::string& vfs_path) {
@@ -1959,6 +2000,7 @@ private:
 		ImGui::TextDisabled("Load .dat / .spr once; they restore from /persist on the next visit.");
 		ImGui::TextDisabled("Save or download writes last-map.txt; the next visit restores that map.");
 		ImGui::TextDisabled("Autosave writes a dirty map to /persist after you pause. Closing a dirty tab warns.");
+		ImGui::TextDisabled("File → Open from /persist loads an earlier OTBM or zip from the browser store.");
 		ImGui::End();
 	}
 
