@@ -106,6 +106,7 @@ public:
 	bool loadHouseXml(const std::string& path);
 	bool loadSpawnXml(const std::string& path);
 	bool loadMaterials(const std::string& path);
+	bool loadClientDirectory(const std::string& directory);
 	bool createSampleMap(const std::string& path);
 	bool createSampleAssets(const std::string& dat_path, const std::string& spr_path);
 

@@ -1034,7 +1034,37 @@ int main() {
 		return Fail("grounds tileset should not contain walls");
 	}
 
-	std::printf("rme core test ok: %zu tiles, palette search, rotate/flip/replace, creatures, download zip\n",
+	const auto client_dir = (dir / "rme_phase17_client").string();
+	std::filesystem::create_directories(client_dir);
+	const auto client_dat = (std::filesystem::path(client_dir) / "Tibia.dat").string();
+	const auto client_spr = (std::filesystem::path(client_dir) / "Tibia.spr").string();
+	if (!tools.createSampleAssets(client_dat, client_spr)) {
+		return Fail("phase 17 sample client write failed");
+	}
+	{
+		const auto decoy = std::filesystem::path(client_dir) / "other.dat";
+		std::FILE* out = std::fopen(decoy.string().c_str(), "wb");
+		if (!out) {
+			return Fail("could not write decoy dat");
+		}
+		const char junk[] = "not a dat";
+		std::fwrite(junk, 1, sizeof(junk) - 1, out);
+		std::fclose(out);
+	}
+	EditorSession restored_client;
+	if (!restored_client.loadClientDirectory(client_dir) || restored_client.items().size() != 33
+		|| !restored_client.assets().spr_loaded) {
+		return Fail("loadClientDirectory should prefer Tibia.dat / Tibia.spr");
+	}
+	if (restored_client.assets().dat_path.find("Tibia.dat") == std::string::npos) {
+		return Fail("restored dat path should be Tibia.dat");
+	}
+	EditorSession empty_client;
+	if (empty_client.loadClientDirectory((dir / "rme_phase17_empty").string())) {
+		return Fail("empty client directory should not load");
+	}
+
+	std::printf("rme core test ok: %zu tiles, persist client dir, palette search, rotate/flip/replace\n",
 		reloaded.map().tileCount());
 	return 0;
 }

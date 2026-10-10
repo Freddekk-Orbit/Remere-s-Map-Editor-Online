@@ -91,3 +91,8 @@ Port the C++ desktop Remere's Map Editor (https://github.com/opentibiabr/remeres
 ## Phase 16 Conventions
 - Palette search lives in `EditorSession::paletteItems`. ImGui only displays the ids and sets the brush.
 - Match is case-insensitive name substring or decimal item id. Empty query returns the tileset (or every item).
+
+## Phase 17 Conventions
+- Restoring client files uses `EditorSession::loadClientDirectory`. Prefer `Tibia.dat` / `Tibia.spr` in that folder.
+- Copying to IDBFS `/persist` stays in `rme::wasm`. ImGui only loads, then persist, then restore when IDBFS is ready.
+- Do not persist the boot sample automatically. Maps stay on the existing zip/OTBM persist path.
