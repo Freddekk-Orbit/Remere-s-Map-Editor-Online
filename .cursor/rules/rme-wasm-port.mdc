@@ -42,3 +42,5 @@ Port the C++ desktop Remere's Map Editor (https://github.com/opentibiabr/remeres
 - Client `.dat` / `.spr` restore uses `loadClientDirectory`. IDBFS copy stays in `rme::wasm`. Do not auto-persist the boot sample.
 - Last-map restore uses `loadLastMap` + `last-map.txt`. Zip extract is filename-only. Forget drops the pointer only.
 - Autosave uses `autosaveOtbm` when the map is dirty. ImGui skips mid-stroke and waits for IDBFS restore. `beforeunload` warns if still dirty.
+- Saved maps use `listSavedMaps` / `loadSavedMap`. Only `.otbm` / `.zip` / `.otgz`. Filename-only. ImGui only lists and opens.
+- Removing a saved map uses `removeSavedMap`. Filename-only. Drops the last-map pointer if it named that file. Do not delete client files.
