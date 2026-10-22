@@ -53,6 +53,7 @@ void FetchAsset(const std::string& url, const std::string& dest_path, FetchCallb
 void OpenBrowserFilePicker();
 bool PersistUploadedFile(const std::string& vfs_path);
 void ForgetPersistedClientAssets();
+void ForgetListedFile(const std::string& vfs_path);
 bool DownloadVfsFile(const std::string& vfs_path, const std::string& filename);
 
 } // namespace rme::wasm

@@ -111,3 +111,8 @@ Port the C++ desktop Remere's Map Editor (https://github.com/opentibiabr/remeres
 - Saved maps use `EditorSession::listSavedMaps` / `loadSavedMap`. Only `.otbm` / `.zip` / `.otgz` in that folder.
 - File names are filename-only (no path traversal). Client files and `last-map.txt` stay out of the list.
 - ImGui only lists the names and calls `loadSavedMap`. Opening one updates the last-map pointer.
+
+## Phase 21 Conventions
+- Removing a saved map uses `EditorSession::removeSavedMap`. Filename-only; only `.otbm` / `.zip` / `.otgz`.
+- Delete that map file only. If `last-map.txt` names it, drop the pointer. Do not delete client `.dat` / `.spr` or companion XML.
+- ImGui only lists names and calls `removeSavedMap`. IDBFS sync stays in `rme::wasm`.

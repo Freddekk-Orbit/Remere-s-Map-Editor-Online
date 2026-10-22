@@ -376,6 +376,16 @@ bool PersistUploadedFile(const std::string& vfs_path) {
 	return true;
 }
 
+void ForgetListedFile(const std::string& vfs_path) {
+	std::lock_guard lock(g_mutex);
+	g_files.erase(
+		std::remove_if(g_files.begin(), g_files.end(), [&](const VirtualFile& file) {
+			return file.vfs_path == vfs_path;
+		}),
+		g_files.end()
+	);
+}
+
 void ForgetPersistedClientAssets() {
 	std::error_code ec;
 	std::vector<std::string> removed;

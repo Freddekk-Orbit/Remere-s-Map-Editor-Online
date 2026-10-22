@@ -1173,8 +1173,29 @@ int main() {
 	if (!opened.listSavedMaps((dir / "rme_phase20_empty").string()).empty()) {
 		return Fail("empty folder should list no saved maps");
 	}
+	if (!opened.removeSavedMap(saved_dir, "alpha.otbm")) {
+		return Fail("removeSavedMap should delete the OTBM");
+	}
+	for (const auto& name : opened.listSavedMaps(saved_dir)) {
+		if (name == "alpha.otbm") {
+			return Fail("removed OTBM should leave the list");
+		}
+	}
+	if (opened.removeSavedMap(saved_dir, "Tibia.dat") || opened.removeSavedMap(saved_dir, "missing.otbm")) {
+		return Fail("removeSavedMap should reject non-maps and missing files");
+	}
+	std::error_code map_ec;
+	if (!std::filesystem::is_regular_file(std::filesystem::path(saved_dir) / "Tibia.dat", map_ec)) {
+		return Fail("removeSavedMap must not delete client files");
+	}
+	if (!opened.removeSavedMap(saved_dir, "../bravo.zip")) {
+		return Fail("removeSavedMap should strip path and delete the zip");
+	}
+	if (opened.loadLastMap(saved_dir)) {
+		return Fail("removing the last map should drop the pointer");
+	}
 
-	std::printf("rme core test ok: %zu tiles, saved maps, last map, autosave, persist client dir\n",
+	std::printf("rme core test ok: %zu tiles, saved maps, remove, last map, autosave\n",
 		reloaded.map().tileCount());
 	return 0;
 }

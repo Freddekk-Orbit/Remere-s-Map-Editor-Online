@@ -262,6 +262,19 @@ private:
 					}
 					ImGui::EndMenu();
 				}
+				if (ImGui::BeginMenu("Remove from /persist")) {
+					const auto saved = session_.listSavedMaps(rme::wasm::kPersistDir);
+					if (saved.empty()) {
+						ImGui::TextDisabled("No saved maps");
+					} else {
+						for (const auto& name : saved) {
+							if (ImGui::MenuItem(name.c_str())) {
+								RemoveSavedMap(name);
+							}
+						}
+					}
+					ImGui::EndMenu();
+				}
 				if (ImGui::MenuItem("Map properties...")) {
 					OpenMapProperties();
 				}
@@ -355,7 +368,7 @@ private:
 				ImGui::EndMenu();
 			}
 			if (ImGui::BeginMenu("Help")) {
-				ImGui::MenuItem("About Phase 20", nullptr, &show_about_);
+				ImGui::MenuItem("About Phase 21", nullptr, &show_about_);
 				ImGui::EndMenu();
 			}
 			ImGui::SameLine(ImGui::GetWindowWidth() - 220.0f);
@@ -506,14 +519,14 @@ private:
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 16.0f, viewport->WorkPos.y + 28.0f), ImGuiCond_FirstUseEver);
 		ImGui::SetNextWindowSize(ImVec2(460.0f, 300.0f), ImGuiCond_FirstUseEver);
-		if (!ImGui::Begin("RME Wasm - Phase 20", nullptr, ImGuiWindowFlags_NoCollapse)) {
+		if (!ImGui::Begin("RME Wasm - Phase 21", nullptr, ImGuiWindowFlags_NoCollapse)) {
 			ImGui::End();
 			return;
 		}
 
 		ImGui::TextWrapped(
-			"File → Open from /persist lists maps already in the browser store. Autosave still "
-			"writes after you pause, and the last map restores on the next visit."
+			"Saved maps in /persist can be opened or removed. Del drops that file only — client "
+			".dat / .spr stay. Autosave and last-map restore still run."
 		);
 		ImGui::Separator();
 		ImGui::Text("Map: %s  %dx%d  tiles=%zu  items=%zu%s",
@@ -556,6 +569,10 @@ private:
 					OpenSavedMap(name);
 				}
 				ImGui::SameLine();
+				if (ImGui::SmallButton("Del")) {
+					RemoveSavedMap(name);
+				}
+				ImGui::SameLine();
 				ImGui::TextUnformatted(name.c_str());
 				ImGui::PopID();
 				++shown;
@@ -575,8 +592,9 @@ private:
 		ImGui::TextUnformatted("Remere's Map Editor - WebAssembly port");
 		ImGui::Separator();
 		ImGui::TextWrapped(
-			"Phase 20 lists maps already in /persist. File → Open from /persist (or the welcome "
-			"list) loads an OTBM or zip by file name. Autosave and last-map restore still run."
+			"Phase 21 removes a saved map from /persist. File → Remove from /persist (or Del on "
+			"the welcome list) deletes that OTBM or zip only. The last-map pointer is cleared if "
+			"it named that file. Client files stay."
 		);
 		ImGui::Spacing();
 		ImGui::BulletText("UI: Dear ImGui (SDL2 + OpenGL ES 3.0 / WebGL2)");
@@ -685,6 +703,15 @@ private:
 		}
 		RememberPersistedMap(filename);
 		last_save_message_ = "Opened " + filename;
+	}
+
+	void RemoveSavedMap(const std::string& filename) {
+		if (!session_.removeSavedMap(rme::wasm::kPersistDir, filename)) {
+			return;
+		}
+		rme::wasm::ForgetListedFile(std::string(rme::wasm::kPersistDir) + "/" + filename);
+		rme::wasm::SyncPersistentStore();
+		last_save_message_ = "Removed " + filename;
 	}
 
 	void PersistMapAfterLoad(const std::string& vfs_path) {
@@ -2001,6 +2028,7 @@ private:
 		ImGui::TextDisabled("Save or download writes last-map.txt; the next visit restores that map.");
 		ImGui::TextDisabled("Autosave writes a dirty map to /persist after you pause. Closing a dirty tab warns.");
 		ImGui::TextDisabled("File → Open from /persist loads an earlier OTBM or zip from the browser store.");
+		ImGui::TextDisabled("Del / Remove from /persist deletes that map file only, not the client .dat / .spr.");
 		ImGui::End();
 	}
 
